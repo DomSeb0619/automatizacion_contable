@@ -1,0 +1,199 @@
+{% extends 'documentos/base.html' %}
+
+{% block title %}Configuración institucional{% endblock %}
+
+{% block content %}
+
+<section class="catalog-header">
+
+    <div>
+        <p class="eyebrow">Identidad institucional</p>
+
+        <h1>Configuración institucional</h1>
+
+        <p>
+            Define el nombre, subtítulo y logotipo de esta instalación.
+        </p>
+    </div>
+
+</section>
+
+
+<section class="panel institution-panel">
+
+    <form
+        method="post"
+        enctype="multipart/form-data"
+        class="institution-form"
+    >
+
+        {% csrf_token %}
+
+        {{ form.non_field_errors }}
+
+
+        <div class="institution-grid">
+
+            <!-- DATOS -->
+
+            <div class="institution-fields">
+
+                <div class="institution-section-heading">
+
+                    <p class="catalog-mini-eyebrow">
+                        Información general
+                    </p>
+
+                    <h2>
+                        Datos de la organización
+                    </h2>
+
+                    <p>
+                        Estos datos se mostrarán en la cabecera y la identidad visual del sistema.
+                    </p>
+
+                </div>
+
+
+                <label class="institution-field">
+
+                    <span>
+                        Nombre de la organización
+                    </span>
+
+                    {{ form.nombre_organizacion }}
+
+                </label>
+
+                {{ form.nombre_organizacion.errors }}
+
+
+                <label class="institution-field">
+
+                    <span>
+                        Subtítulo
+                    </span>
+
+                    {{ form.subtitulo }}
+
+                </label>
+
+                {{ form.subtitulo.errors }}
+
+
+                <div class="institution-logo-field">
+
+                    <label>
+                        Logotipo
+                    </label>
+
+                    <p>
+                        PNG, JPG, JPEG o WebP. Máximo 2 MB.
+                    </p>
+
+                    <div class="institution-file-input">
+                        {{ form.logotipo }}
+                    </div>
+
+                    {{ form.logotipo.errors }}
+
+                </div>
+
+
+                <label class="checkbox institution-reset-logo">
+
+                    {{ form.eliminar_logotipo }}
+
+                    <span>
+                        Volver a utilizar las iniciales MC
+                    </span>
+
+                </label>
+
+            </div>
+
+
+            <!-- PREVISUALIZACIÓN -->
+
+            <aside class="institution-preview">
+
+                <div class="institution-preview-heading">
+
+                    <p class="catalog-mini-eyebrow">
+                        Vista previa
+                    </p>
+
+                    <h2>
+                        Identidad actual
+                    </h2>
+
+                </div>
+
+
+                <div class="institution-preview-card">
+
+                    <div class="institution-preview-logo">
+
+                        {% if configuracion.logotipo %}
+
+                            <img
+                                class="institution-logo-preview"
+                                src="{{ configuracion.logotipo.url }}"
+                                alt="Vista previa del logotipo actual"
+                            >
+
+                        {% else %}
+
+                            <div class="institution-logo-fallback">
+                                MC
+                            </div>
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <div class="institution-preview-copy">
+
+                        <strong>
+                            {{ configuracion.nombre_organizacion|default:"Meneses Constructores" }}
+                        </strong>
+
+                        <span>
+                            {{ configuracion.subtitulo|default:"Automatización y control contable" }}
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="institution-preview-note">
+
+                    <span>
+                        Esta es la identidad que se mostrará actualmente en el sistema.
+                    </span>
+
+                </div>
+
+            </aside>
+
+        </div>
+
+
+        <div class="institution-actions">
+
+            <button
+                class="primary"
+                type="submit"
+            >
+                Guardar identidad
+            </button>
+
+        </div>
+
+    </form>
+
+</section>
+
+{% endblock %}

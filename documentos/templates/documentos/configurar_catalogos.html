@@ -1,0 +1,990 @@
+{% extends 'documentos/base.html' %}
+
+{% block title %}Configurar catálogos{% endblock %}
+
+{% block content %}
+
+<!-- ======================================================
+     ENCABEZADO
+     ====================================================== -->
+
+<section class="catalog-header">
+
+    <div>
+        <p class="eyebrow">Configuración por proyecto</p>
+
+        <h1>
+            {{ project.empresa.nombre|default:'Selecciona un proyecto' }}
+            {% if project %}
+                · {{ project.codigo }}
+            {% endif %}
+        </h1>
+
+        <p>
+            La factura conserva prioridad. Estos catálogos son aislados por
+            proyecto y solo validan o respaldan la reclasificación.
+        </p>
+    </div>
+
+    <a
+        class="secondary link-button"
+        href="{% url 'documentos:configurar_proyectos' %}"
+    >
+        Cambiar proyecto
+    </a>
+
+</section>
+
+
+<!-- ======================================================
+     ACTUALIZACIÓN DE CATÁLOGOS
+     ====================================================== -->
+
+<section class="panel catalog-upload catalog-upload-modern">
+
+    <div class="catalog-block-heading">
+        <div>
+            <p class="catalog-mini-eyebrow">Actualización</p>
+
+            <h2>Actualizar catálogos</h2>
+
+            <p>
+                Selecciona el proyecto y carga el archivo correspondiente.
+                Podrás revisar todos los cambios antes de guardarlos.
+            </p>
+        </div>
+    </div>
+
+
+    <form
+        method="post"
+        enctype="multipart/form-data"
+        class="catalog-form catalog-upload-form"
+    >
+
+        {% csrf_token %}
+
+        <input
+            type="hidden"
+            name="accion"
+            value="previsualizar"
+        >
+
+        {{ upload_form.non_field_errors }}
+
+
+        <div class="catalog-upload-fields">
+
+            <label>
+                <span>Empresa y proyecto</span>
+                {{ upload_form.proyecto }}
+            </label>
+
+            {{ upload_form.proyecto.errors }}
+
+
+            <label>
+                <span>Archivo .xlsx</span>
+                {{ upload_form.archivo }}
+            </label>
+
+            {{ upload_form.archivo.errors }}
+
+        </div>
+
+
+        <div class="catalog-upload-actions">
+
+            <button
+                class="primary"
+                name="tipo"
+                value="productos"
+                type="submit"
+            >
+                Actualizar productos e IVA
+            </button>
+
+            <button
+                class="secondary"
+                name="tipo"
+                value="rubros"
+                type="submit"
+            >
+                Actualizar rubros y cuentas
+            </button>
+
+        </div>
+
+    </form>
+
+</section>
+
+
+<!-- ======================================================
+     PREVISUALIZACIÓN PENDIENTE
+     ====================================================== -->
+
+{% if preview %}
+
+<section class="panel preview-panel">
+
+    <div class="section-title">
+
+        <div>
+            <p class="eyebrow">Pendiente de confirmación</p>
+            <h2>{{ preview.tipo|title }}</h2>
+        </div>
+
+        <span
+            class="status {% if preview.puede_confirmar %}valido{% else %}error{% endif %}"
+        >
+            {% if preview.puede_confirmar %}
+                LISTO
+            {% else %}
+                REVISAR
+            {% endif %}
+        </span>
+
+    </div>
+
+
+    <div class="import-stats">
+
+        <div>
+            <span>Creados</span>
+            <b>{{ preview.creados }}</b>
+        </div>
+
+        <div>
+            <span>Actualizados</span>
+            <b>{{ preview.actualizados }}</b>
+        </div>
+
+        <div>
+            <span>Omitidos</span>
+            <b>{{ preview.omitidos }}</b>
+        </div>
+
+        <div>
+            <span>Rechazados</span>
+            <b>{{ preview.rechazados }}</b>
+        </div>
+
+    </div>
+
+
+    {% if preview.rechazados %}
+
+        <div class="notice warning">
+            Las filas rechazadas se excluirán. Revisa su número, código,
+            motivo y valor antes de confirmar.
+        </div>
+
+    {% endif %}
+
+
+    <div class="table-wrap preview-table-scroll">
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Fila</th>
+                    <th>Código</th>
+                    <th>Acción</th>
+                    <th>Detalle</th>
+                    <th>Valor problemático</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for row in preview.filas %}
+
+                    <tr>
+
+                        <td>{{ row.fila }}</td>
+
+                        <td>{{ row.codigo }}</td>
+
+                        <td>{{ row.estado }}</td>
+
+                        <td>
+                            {% if row.motivo %}
+                                {{ row.motivo }}
+                            {% else %}
+                                {{ row.descripcion|default:'' }}
+                                {{ row.porcentaje_iva|default:'' }}
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {{ row.valor_problematico|default:'' }}
+                        </td>
+
+                    </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+
+    <form
+        method="post"
+        action="{% url 'documentos:confirmar_catalogo' %}"
+        class="confirm-bar"
+    >
+
+        {% csrf_token %}
+
+        <div>
+
+            <span>
+                La confirmación usa una transacción y no duplica registros existentes.
+            </span>
+
+            {% if preview.requiere_aceptacion %}
+
+                <label class="confirm-checkbox">
+                    <input
+                        type="checkbox"
+                        name="acepta_rechazados"
+                    >
+
+                    Confirmo que las filas rechazadas serán excluidas
+                </label>
+
+            {% endif %}
+
+        </div>
+
+
+        <button
+            class="primary"
+            {% if not preview.puede_confirmar %}disabled{% endif %}
+            type="submit"
+        >
+            Confirmar y guardar
+        </button>
+
+    </form>
+
+</section>
+
+{% endif %}
+
+
+<!-- ======================================================
+     CONFIGURACIÓN DEL PROYECTO
+     ====================================================== -->
+
+{% if project %}
+
+<section class="catalog-results catalog-workspace">
+
+    <div class="catalog-project-heading">
+
+        <div>
+            <p class="eyebrow">Ámbito consultado</p>
+
+            <h2>
+                {{ project.empresa.nombre }} · {{ project.codigo }}
+            </h2>
+        </div>
+
+    </div>
+
+
+    <!-- RESUMEN -->
+
+    <section class="panel catalog-summary">
+
+        <div class="catalog-summary-main">
+
+            <div>
+                <p class="catalog-mini-eyebrow">Estado del proyecto</p>
+
+                <h3>{{ resumen_configuracion.estado }}</h3>
+            </div>
+
+        </div>
+
+
+        <div class="catalog-summary-metrics">
+
+            <div>
+                <strong>{{ resumen_configuracion.productos_activos }}</strong>
+                <span>Productos activos</span>
+            </div>
+
+            <div>
+                <strong>{{ resumen_configuracion.rubros_finales_activos }}</strong>
+                <span>Rubros finales tipo V</span>
+            </div>
+
+            <div>
+                <strong>{{ resumen_configuracion.categorias_configuradas }}</strong>
+                <span>Categorías</span>
+            </div>
+
+            <div>
+                <strong>{{ resumen_configuracion.cuentas_generales_permitidas }}</strong>
+                <span>Cuentas permitidas</span>
+            </div>
+
+        </div>
+
+
+        {% if resumen_configuracion.ultima_actualizacion %}
+
+            <p class="catalog-last-update">
+                Última actualización:
+                {{ resumen_configuracion.ultima_actualizacion }}
+            </p>
+
+        {% endif %}
+
+    </section>
+
+
+    <!-- ÚLTIMAS ACTUALIZACIONES -->
+
+    <div class="catalog-update-grid">
+
+        <article class="panel catalog-update-card">
+
+            <p class="catalog-mini-eyebrow">Productos</p>
+
+            <h3>Productos e IVA</h3>
+
+            {% if actualizacion_productos %}
+
+                <p class="catalog-update-file">
+                    {{ actualizacion_productos.nombre_archivo }}
+                </p>
+
+                <p class="muted">
+                    {{ actualizacion_productos.actualizado_en }}
+                </p>
+
+                <div class="catalog-update-stats">
+                    {{ actualizacion_productos.creados }} creados ·
+                    {{ actualizacion_productos.actualizados }} actualizados ·
+                    {{ actualizacion_productos.omitidos }} omitidos ·
+                    {{ actualizacion_productos.rechazados }} rechazados
+                </div>
+
+            {% else %}
+
+                <p class="muted">
+                    Aún no hay carga confirmada.
+                </p>
+
+            {% endif %}
+
+        </article>
+
+
+        <article class="panel catalog-update-card">
+
+            <p class="catalog-mini-eyebrow">Presupuesto</p>
+
+            <h3>Rubros y cuentas</h3>
+
+            {% if actualizacion_rubros %}
+
+                <p class="catalog-update-file">
+                    {{ actualizacion_rubros.nombre_archivo }}
+                </p>
+
+                <p class="muted">
+                    {{ actualizacion_rubros.actualizado_en }}
+                </p>
+
+                <div class="catalog-update-stats">
+                    {{ actualizacion_rubros.creados }} creados ·
+                    {{ actualizacion_rubros.actualizados }} actualizados ·
+                    {{ actualizacion_rubros.omitidos }} omitidos ·
+                    {{ actualizacion_rubros.rechazados }} rechazados
+                </div>
+
+            {% else %}
+
+                <p class="muted">
+                    Aún no hay carga confirmada.
+                </p>
+
+            {% endif %}
+
+        </article>
+
+    </div>
+
+
+    <!-- BUSCADOR -->
+
+    <form
+        method="get"
+        class="catalog-search-modern"
+    >
+
+        <input
+            type="hidden"
+            name="proyecto"
+            value="{{ project.id }}"
+        >
+
+
+        <div class="catalog-search-field">
+
+            <label for="catalog-search">
+                Buscar en los catálogos
+            </label>
+
+            <input
+                id="catalog-search"
+                name="q"
+                value="{{ query }}"
+                placeholder="Código, descripción, categoría o cuenta"
+            >
+
+        </div>
+
+
+        <button
+            class="primary"
+            type="submit"
+        >
+            Buscar
+        </button>
+
+    </form>
+
+
+    <!-- ==================================================
+         CATÁLOGOS CONTRAÍBLES
+         ================================================== -->
+
+    <div class="catalog-accordion">
+
+
+        <!-- PRODUCTOS -->
+
+        <details
+            class="panel catalog-detail"
+            {% if query %}open{% endif %}
+        >
+
+            <summary>
+
+                <div>
+
+                    <span class="catalog-detail-number">
+                        1
+                    </span>
+
+                    <div>
+                        <strong>Productos e IVA</strong>
+
+                        <small>
+                            {{ resumen_configuracion.productos_activos }}
+                            productos activos
+                        </small>
+                    </div>
+
+                </div>
+
+                <span class="catalog-detail-action">
+                    Ver catálogo
+                </span>
+
+            </summary>
+
+
+            <div class="catalog-detail-content">
+
+                <div class="catalog-table-scroll">
+
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>IVA</th>
+                                <th>Categoría</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+
+                            {% for item in products %}
+
+                                <tr>
+                                    <td>{{ item.codigo_producto }}</td>
+                                    <td>{{ item.porcentaje_iva }}%</td>
+                                    <td>{{ item.categoria }}</td>
+                                </tr>
+
+                            {% empty %}
+
+                                <tr>
+                                    <td colspan="3">
+                                        Sin resultados.
+                                    </td>
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </details>
+
+
+        <!-- RUBROS -->
+
+        <details
+            class="panel catalog-detail"
+            {% if query %}open{% endif %}
+        >
+
+            <summary>
+
+                <div>
+
+                    <span class="catalog-detail-number">
+                        2
+                    </span>
+
+                    <div>
+                        <strong>
+                            Rubros y cuentas presupuestarias
+                        </strong>
+
+                        <small>
+                            {{ resumen_configuracion.rubros_finales_activos }}
+                            rubros finales
+                        </small>
+                    </div>
+
+                </div>
+
+                <span class="catalog-detail-action">
+                    Ver catálogo
+                </span>
+
+            </summary>
+
+
+            <div class="catalog-detail-content">
+
+                <div class="catalog-table-scroll">
+
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>Rubro</th>
+                                <th>Tipo</th>
+                                <th>Cuenta</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+
+                            {% for item in rubros %}
+
+                                <tr>
+                                    <td>{{ item.codigo_rubro }}</td>
+                                    <td>{{ item.tipo }}</td>
+                                    <td>{{ item.cuenta_contable }}</td>
+                                </tr>
+
+                            {% empty %}
+
+                                <tr>
+                                    <td colspan="3">
+                                        Sin resultados.
+                                    </td>
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </details>
+
+
+        <!-- CATEGORÍAS -->
+
+        <details
+            class="panel catalog-detail"
+            {% if query %}open{% endif %}
+        >
+
+            <summary>
+
+                <div>
+
+                    <span class="catalog-detail-number">
+                        3
+                    </span>
+
+                    <div>
+                        <strong>
+                            Categorías y cuentas generales
+                        </strong>
+
+                        <small>
+                            {{ resumen_configuracion.cuentas_generales_permitidas }}
+                            cuentas permitidas
+                        </small>
+                    </div>
+
+                </div>
+
+                <span class="catalog-detail-action">
+                    Ver catálogo
+                </span>
+
+            </summary>
+
+
+            <div class="catalog-detail-content">
+
+                <div class="catalog-table-scroll catalog-category-scroll">
+
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>Categoría</th>
+                                <th>Cuenta</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+
+                            {% for item in categories %}
+
+                                <tr>
+
+                                    <td>
+                                        {{ item.categoria }}
+                                    </td>
+
+                                    <td>
+                                        {{ item.cuenta_general_original }}
+                                    </td>
+
+                                    <td>
+
+                                        {% if item.activo %}
+
+                                            <span class="status valido">
+                                                Activa
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="status error">
+                                                Inactiva
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+                                    <td>
+
+                                        <a
+                                            class="history-link"
+                                            href="?proyecto={{ project.id }}&editar_categoria={{ item.id }}"
+                                        >
+                                            Editar
+                                        </a>
+
+                                    </td>
+
+                                </tr>
+
+                            {% empty %}
+
+                                <tr>
+                                    <td colspan="4">
+                                        Sin resultados.
+                                    </td>
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </details>
+
+    </div>
+
+
+    <!-- ==================================================
+         CORRECCIÓN MANUAL
+         ================================================== -->
+
+    <section class="manual-section catalog-manual-section">
+
+        <div class="catalog-manual-heading">
+
+            <p class="catalog-mini-eyebrow">
+                Mantenimiento
+            </p>
+
+            <h2>
+                Corrección manual
+            </h2>
+
+            <p>
+                Utiliza estas opciones únicamente cuando necesites corregir
+                manualmente un catálogo.
+            </p>
+
+        </div>
+
+
+        <div class="manual-grid catalog-manual-grid">
+
+
+            <!-- PRODUCTO -->
+
+            <details class="catalog-manual-detail">
+
+                <summary>
+                    Producto e IVA
+                </summary>
+
+
+                <form
+                    method="post"
+                    class="catalog-form"
+                >
+
+                    {% csrf_token %}
+
+                    <input
+                        type="hidden"
+                        name="accion"
+                        value="guardar_producto"
+                    >
+
+                    {{ producto_form.proyecto.as_hidden }}
+                    {{ producto_form.registro_id }}
+                    {{ producto_form.non_field_errors }}
+
+
+                    <label>
+                        Código
+                        {{ producto_form.codigo_producto }}
+                    </label>
+
+                    <label>
+                        Descripción
+                        {{ producto_form.descripcion }}
+                    </label>
+
+                    <label>
+                        IVA (%)
+                        {{ producto_form.porcentaje_iva }}
+                    </label>
+
+                    <label>
+                        Categoría
+                        {{ producto_form.categoria }}
+                    </label>
+
+                    <label class="checkbox">
+                        {{ producto_form.activo }}
+                        Activo
+                    </label>
+
+
+                    <button
+                        class="primary"
+                        type="submit"
+                    >
+                        Guardar producto
+                    </button>
+
+                </form>
+
+            </details>
+
+
+            <!-- RUBRO -->
+
+            <details class="catalog-manual-detail">
+
+                <summary>
+                    Rubro y cuenta
+                </summary>
+
+
+                <form
+                    method="post"
+                    class="catalog-form"
+                >
+
+                    {% csrf_token %}
+
+                    <input
+                        type="hidden"
+                        name="accion"
+                        value="guardar_rubro"
+                    >
+
+                    {{ rubro_form.proyecto.as_hidden }}
+                    {{ rubro_form.registro_id }}
+                    {{ rubro_form.non_field_errors }}
+
+
+                    <label>
+                        Código
+                        {{ rubro_form.codigo_rubro }}
+                    </label>
+
+                    <label>
+                        Descripción
+                        {{ rubro_form.descripcion }}
+                    </label>
+
+                    <label>
+                        Tipo
+                        {{ rubro_form.tipo }}
+                    </label>
+
+                    <label>
+                        Cuenta
+                        {{ rubro_form.cuenta_contable }}
+                    </label>
+
+                    <label class="checkbox">
+                        {{ rubro_form.activo }}
+                        Activo
+                    </label>
+
+
+                    <button
+                        class="primary"
+                        type="submit"
+                    >
+                        Guardar rubro
+                    </button>
+
+                </form>
+
+            </details>
+
+
+            <!-- CATEGORÍA -->
+
+            <details
+                class="catalog-manual-detail"
+                {% if request.GET.editar_categoria %}open{% endif %}
+            >
+
+                <summary>
+                    Categoría y cuenta permitida
+                </summary>
+
+
+                <form
+                    method="post"
+                    class="catalog-form"
+                >
+
+                    {% csrf_token %}
+
+                    <input
+                        type="hidden"
+                        name="accion"
+                        value="guardar_categoria"
+                    >
+
+                    {{ categoria_form.proyecto.as_hidden }}
+                    {{ categoria_form.registro_id }}
+                    {{ categoria_form.non_field_errors }}
+
+
+                    <label>
+                        Categoría
+                        {{ categoria_form.categoria }}
+                    </label>
+
+                    <label>
+                        Cuenta original permitida
+                        {{ categoria_form.cuenta_general_original }}
+                    </label>
+
+                    <label>
+                        Descripción
+                        {{ categoria_form.descripcion }}
+                    </label>
+
+                    <label class="checkbox">
+                        {{ categoria_form.activo }}
+                        Activo
+                    </label>
+
+
+                    <button
+                        class="primary"
+                        type="submit"
+                    >
+                        Guardar cuenta permitida
+                    </button>
+
+                </form>
+
+            </details>
+
+        </div>
+
+    </section>
+
+</section>
+
+
+{% else %}
+
+<section class="panel empty-catalog">
+
+    <p>
+        Selecciona empresa y proyecto en la carga para consultar
+        o corregir sus catálogos.
+    </p>
+
+</section>
+
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,424 @@
+{% extends 'documentos/base.html' %}
+
+{% block title %}Revisión de reclasificación{% endblock %}
+
+{% block content %}
+
+<!-- ======================================================
+     ENCABEZADO
+     ====================================================== -->
+
+<section class="review-header">
+
+    <div>
+        <p class="eyebrow">
+            Lote #{{ preview.id }}
+        </p>
+
+        <h1>
+            Revisión de reclasificación
+        </h1>
+
+        <p>
+            {{ preview.empresa }} · {{ preview.proyecto.codigo }}
+        </p>
+    </div>
+
+    <a
+        class="secondary link-button"
+        href="{% url 'documentos:cargar_lote' %}"
+    >
+        Procesar otro lote
+    </a>
+
+</section>
+
+
+<!-- ======================================================
+     RESUMEN DEL LOTE
+     ====================================================== -->
+
+<section class="panel review-summary">
+
+    <div class="review-summary-status">
+
+        <span class="review-summary-label">
+            Estado del lote
+        </span>
+
+        <strong class="status {{ preview.estado|lower }}">
+            {{ preview.estado }}
+        </strong>
+
+    </div>
+
+
+    <div class="review-summary-grid">
+
+        <div>
+            <span>Archivos</span>
+            <strong>{{ preview.cantidad_archivos }}</strong>
+        </div>
+
+        <div>
+            <span>Exportables</span>
+            <strong>{{ preview.cantidad_exportables }}</strong>
+        </div>
+
+        <div>
+            <span>Sin advertencias</span>
+            <strong>{{ preview.cantidad_validos }}</strong>
+        </div>
+
+        <div>
+            <span>Advertencias</span>
+            <strong>{{ preview.cantidad_advertencias }}</strong>
+        </div>
+
+        <div>
+            <span>Errores</span>
+            <strong>{{ preview.cantidad_con_errores }}</strong>
+        </div>
+
+        <div>
+            <span>Duplicados</span>
+            <strong>{{ preview.cantidad_duplicados }}</strong>
+        </div>
+
+    </div>
+
+
+    <div class="review-accounting-summary">
+
+        <div>
+            <span>Débito</span>
+            <strong>${{ preview.total_debito }}</strong>
+        </div>
+
+        <div>
+            <span>Crédito</span>
+            <strong>${{ preview.total_credito }}</strong>
+        </div>
+
+        <div>
+            <span>Diferencia</span>
+            <strong>${{ preview.diferencia }}</strong>
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- ======================================================
+     EXPORTACIÓN
+     ====================================================== -->
+
+{% if preview.puede_exportar %}
+
+    <form
+        method="post"
+        action="{% url 'documentos:exportar_lote' preview.id %}"
+        class="export-bar review-export-bar"
+    >
+
+        {% csrf_token %}
+
+        <div class="review-export-copy">
+
+            <strong>
+                {% if preview.estado == 'EXPORTADO' %}
+                    Diario ya exportado
+                {% else %}
+                    Diario listo para ERP
+                {% endif %}
+            </strong>
+
+            <span>
+                Solo se incluirán las facturas elegibles.
+            </span>
+
+        </div>
+
+        <button
+            class="primary"
+            type="submit"
+        >
+            {% if preview.estado == 'EXPORTADO' %}
+                Volver a descargar diario
+            {% else %}
+                Descargar diario para ERP
+            {% endif %}
+        </button>
+
+    </form>
+
+{% else %}
+
+    <div class="export-bar review-export-bar disabled-export">
+
+        <div class="review-export-copy">
+
+            <strong>
+                No hay facturas exportables
+            </strong>
+
+            <span>
+                Corrige los documentos con error y procesa un nuevo lote.
+            </span>
+
+        </div>
+
+        <button
+            class="primary"
+            type="button"
+            disabled
+        >
+            Descargar diario para ERP
+        </button>
+
+    </div>
+
+{% endif %}
+
+
+<!-- ======================================================
+     DOCUMENTOS
+     ====================================================== -->
+
+<section class="documents review-documents">
+
+    {% for document in preview.documentos %}
+
+        <article
+            class="
+                document-card
+                review-document-card
+                {% if not document.puede_exportar %}excluded{% endif %}
+                {% if document.estado == 'EXPORTADO' %}is-exported{% endif %}
+            "
+        >
+
+            <!-- CABECERA DEL DOCUMENTO -->
+
+            <header class="review-document-header">
+
+                <div class="review-document-main">
+
+                    <p class="eyebrow">
+                        {{ document.nombre_original }}
+                    </p>
+
+                    <h2>
+                        {{ document.proveedor|default:'Documento sin proveedor' }}
+                    </h2>
+
+                    <p class="review-document-number">
+                        Factura
+                        {{ document.numero_factura_normalizado|default:'Sin número' }}
+                    </p>
+
+                </div>
+
+
+                <div class="status-block review-document-status">
+
+                    <strong class="status {{ document.estado|lower }}">
+                        {{ document.estado }}
+                    </strong>
+
+                    <span>
+                        {% if document.estado == 'EXPORTADO' %}
+                            Incluida en el diario exportado
+                        {% elif document.estado == 'ERROR' or document.estado == 'DUPLICADO' %}
+                            Excluida de la exportación
+                        {% elif document.puede_exportar %}
+                            Se incluirá en la exportación
+                        {% else %}
+                            Excluida de la exportación
+                        {% endif %}
+                    </span>
+
+                </div>
+
+            </header>
+
+
+            <!-- TOTALES -->
+
+            <dl class="document-totals review-document-totals">
+
+                <div>
+                    <dt>Subtotal</dt>
+                    <dd>${{ document.subtotal }}</dd>
+                </div>
+
+                <div>
+                    <dt>IVA</dt>
+                    <dd>${{ document.iva }}</dd>
+                </div>
+
+                <div>
+                    <dt>Total</dt>
+                    <dd>${{ document.total }}</dd>
+                </div>
+
+                <div>
+                    <dt>Débito</dt>
+                    <dd>${{ document.total_debito }}</dd>
+                </div>
+
+                <div>
+                    <dt>Crédito</dt>
+                    <dd>${{ document.total_credito }}</dd>
+                </div>
+
+                <div>
+                    <dt>Diferencia</dt>
+                    <dd>${{ document.diferencia }}</dd>
+                </div>
+
+            </dl>
+
+
+            <!-- ADVERTENCIAS -->
+
+            {% if document.advertencias %}
+
+                <details class="notice warning review-warning">
+
+                    <summary>
+                        Ver {{ document.advertencias|length }}
+                        advertencia{{ document.advertencias|pluralize:"s" }}
+                    </summary>
+
+                    <div class="review-warning-content">
+
+                        {% for warning in document.advertencias %}
+
+                            <p>
+                                <b>Advertencia:</b>
+                                {{ warning.message }}
+                            </p>
+
+                        {% endfor %}
+
+                    </div>
+
+                </details>
+
+            {% endif %}
+
+
+            <!-- ERRORES -->
+
+            {% for error in document.errores %}
+
+                <div class="notice error review-error">
+
+                    <b>
+                        Revisión necesaria:
+                    </b>
+
+                    {{ error.message }}
+
+                    {% if error.code == 'FACTURA_EXPORTADA' and error.lote_id %}
+
+                        <a
+                            href="{% url 'documentos:previsualizar_lote' error.lote_id %}"
+                        >
+                            Ver y volver a descargar
+                        </a>
+
+                    {% endif %}
+
+                </div>
+
+            {% endfor %}
+
+
+            <!-- MOVIMIENTOS -->
+
+            {% if document.lineas %}
+
+                <div class="review-lines-heading">
+
+                    <div>
+                        <p class="catalog-mini-eyebrow">
+                            Movimiento contable
+                        </p>
+
+                        <h3>
+                            Líneas de reclasificación
+                        </h3>
+                    </div>
+
+                </div>
+
+
+                <div class="table-wrap review-lines-table">
+
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>Cuenta</th>
+                                <th>Detalle</th>
+                                <th>Débito</th>
+                                <th>Crédito</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+
+                            {% for line in document.lineas %}
+
+                                <tr>
+
+                                    <td>
+                                        <strong>
+                                            {{ line.cuenta }}
+                                        </strong>
+                                    </td>
+
+                                    <td>
+                                        {{ line.detalle }}
+                                    </td>
+
+                                    <td>
+                                        {% if line.tipo == '1' %}
+                                            ${{ line.valor }}
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        {% if line.tipo == '2' %}
+                                            ${{ line.valor }}
+                                        {% endif %}
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% endif %}
+
+        </article>
+
+    {% empty %}
+
+        <div class="panel empty-catalog">
+            Este lote no contiene documentos.
+        </div>
+
+    {% endfor %}
+
+</section>
+
+{% endblock %}

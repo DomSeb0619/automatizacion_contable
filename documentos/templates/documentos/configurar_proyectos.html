@@ -1,0 +1,287 @@
+{% extends 'documentos/base.html' %}
+
+{% block title %}Configuración por proyecto{% endblock %}
+
+{% block content %}
+
+<section class="catalog-header">
+    <div>
+        <p class="eyebrow">Configuración</p>
+
+        <h1>Empresas y proyectos</h1>
+
+        <p>
+            Los catálogos y las cuentas contables se aíslan estrictamente por proyecto.
+        </p>
+    </div>
+</section>
+
+
+<div class="projects-layout">
+
+    <section class="panel project-form-card">
+
+        <div class="project-form-card__header">
+            <div>
+                <p class="project-form-card__eyebrow">Empresa</p>
+
+                <h2>
+                    {% if empresa_editada %}
+                        Editar empresa
+                    {% else %}
+                        Nueva empresa
+                    {% endif %}
+                </h2>
+
+                <p>
+                    Registra la empresa que contendrá uno o varios proyectos contables.
+                </p>
+            </div>
+        </div>
+
+        <form method="post" class="catalog-form project-form">
+
+            {% csrf_token %}
+
+            <input
+                name="accion"
+                value="guardar_empresa"
+                type="hidden"
+            >
+
+            {% if empresa_editada %}
+                <input
+                    name="registro_id"
+                    value="{{ empresa_editada.id }}"
+                    type="hidden"
+                >
+            {% endif %}
+
+            {{ empresa_form.non_field_errors }}
+
+            <label>
+                <span>Nombre</span>
+                {{ empresa_form.nombre }}
+            </label>
+
+            <label>
+                <span>Código</span>
+                {{ empresa_form.codigo }}
+            </label>
+
+            <label class="checkbox project-checkbox">
+                {{ empresa_form.activa }}
+                <span>Empresa activa</span>
+            </label>
+
+            <div class="project-form-actions">
+                <button
+                    class="primary"
+                    type="submit"
+                >
+                    Guardar empresa
+                </button>
+            </div>
+
+        </form>
+
+    </section>
+
+
+    <section class="panel project-form-card">
+
+        <div class="project-form-card__header">
+            <div>
+                <p class="project-form-card__eyebrow">Proyecto</p>
+
+                <h2>
+                    {% if proyecto_editado %}
+                        Editar proyecto
+                    {% else %}
+                        Nuevo proyecto
+                    {% endif %}
+                </h2>
+
+                <p>
+                    Crea el proyecto y vincúlalo a la empresa correspondiente.
+                </p>
+            </div>
+        </div>
+
+        <form method="post" class="catalog-form project-form">
+
+            {% csrf_token %}
+
+            <input
+                name="accion"
+                value="guardar_proyecto"
+                type="hidden"
+            >
+
+            {% if proyecto_editado %}
+                <input
+                    name="registro_id"
+                    value="{{ proyecto_editado.id }}"
+                    type="hidden"
+                >
+            {% endif %}
+
+            {{ proyecto_form.non_field_errors }}
+
+            <label>
+                <span>Empresa</span>
+                {{ proyecto_form.empresa }}
+            </label>
+
+            <label>
+                <span>Código</span>
+                {{ proyecto_form.codigo }}
+            </label>
+
+            <label>
+                <span>Nombre</span>
+                {{ proyecto_form.nombre }}
+            </label>
+
+            <label class="checkbox project-checkbox">
+                {{ proyecto_form.activo }}
+                <span>Proyecto activo</span>
+            </label>
+
+            <div class="project-form-actions">
+                <button
+                    class="primary"
+                    type="submit"
+                >
+                    Guardar proyecto
+                </button>
+            </div>
+
+        </form>
+
+    </section>
+
+</div>
+
+
+<section class="panel projects-table">
+
+    <div class="projects-table__header">
+        <div>
+            <p class="project-form-card__eyebrow">
+                Administración
+            </p>
+
+            <h2>
+                Proyectos configurados
+            </h2>
+
+            <p>
+                Revisa el estado de cada proyecto y accede a sus catálogos contables.
+            </p>
+        </div>
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Empresa</th>
+                    <th>Proyecto</th>
+                    <th>Estado</th>
+                    <th>Configuración</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+
+
+            <tbody>
+
+                {% for item,resumen in proyectos %}
+
+                    <tr>
+
+                        <td>
+                            {{ item.empresa.nombre }}
+                        </td>
+
+                        <td>
+                            <strong>
+                                {{ item.codigo }}
+                            </strong>
+
+                            <span class="project-name">
+                                · {{ item.nombre }}
+                            </span>
+                        </td>
+
+                        <td>
+
+                            {% if item.activo and item.empresa.activa %}
+
+                                <span class="project-status active">
+                                    Activo
+                                </span>
+
+                            {% else %}
+
+                                <span class="project-status inactive">
+                                    Inactivo
+                                </span>
+
+                            {% endif %}
+
+                        </td>
+
+                        <td>
+                            <span class="project-config">
+                                {{ resumen.estado }}
+                            </span>
+                        </td>
+
+                        <td>
+
+                            <div class="project-actions">
+
+                                <a
+                                    class="history-link"
+                                    href="{% url 'documentos:configurar_catalogos' %}?proyecto={{ item.id }}"
+                                >
+                                    Abrir
+                                </a>
+
+                                <a
+                                    class="history-link"
+                                    href="?editar_proyecto={{ item.id }}"
+                                >
+                                    Editar
+                                </a>
+
+                            </div>
+
+                        </td>
+
+                    </tr>
+
+                {% empty %}
+
+                    <tr>
+                        <td colspan="5">
+                            No hay proyectos configurados.
+                        </td>
+                    </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+{% endblock %}

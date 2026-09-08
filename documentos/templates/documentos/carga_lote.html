@@ -1,0 +1,34 @@
+{% extends 'documentos/base.html' %}
+{% load static %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ institucion.nombre_organizacion }}</p>
+  <h1>Reclasificación contable</h1>
+  <p>Carga las consultas de documentos del ERP, revisa el resultado y descarga un diario listo para importar.</p>
+</section>
+<ol class="steps" aria-label="Pasos del proceso">
+  <li class="active"><b>1</b><span>Cargar facturas</span></li>
+  <li><b>2</b><span>Revisar</span></li>
+  <li><b>3</b><span>Descargar diario</span></li>
+</ol>
+<section class="panel upload-panel">
+  <form method="post" enctype="multipart/form-data" id="upload-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+    <label class="field-label" for="{{ form.proyecto.id_for_label }}">Empresa y proyecto</label><p class="muted">Si el proyecto está incompleto, se mostrará una advertencia antes de validar el lote.</p>
+    {{ form.proyecto }}
+    {% if form.proyecto.errors %}<div class="field-error">{{ form.proyecto.errors|striptags }}</div>{% endif %}
+    <input id="{{ form.archivos.id_for_label }}" name="{{ form.archivos.html_name }}" type="file" accept=".xls" multiple required class="file-input">
+    <div class="dropzone" id="dropzone" tabindex="0">
+      <strong>Arrastra aquí tus archivos .xls</strong>
+      <span>o usa el botón para seleccionarlos</span>
+      <button type="button" class="secondary" id="select-files">Seleccionar archivos</button>
+      <small>Máximo 50 archivos, hasta 5 MB cada uno. Se procesan temporalmente y no se conservan.</small>
+    </div>
+    {% if form.archivos.errors %}<div class="field-error">{{ form.archivos.errors|striptags }}</div>{% endif %}
+    <ul id="file-list" class="file-list" aria-live="polite"></ul>
+    <button class="primary" type="submit" id="submit-button">Procesar facturas</button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'documentos/upload.js' %}"></script>{% endblock %}

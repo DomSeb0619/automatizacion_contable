@@ -1,0 +1,396 @@
+{% load static %}
+
+<!doctype html>
+
+<html lang="es">
+
+<head>
+
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>
+        {% block title %}
+            Reclasificación contable
+        {% endblock %}
+        · {{ institucion.nombre_organizacion }}
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{% static 'documentos/app.css' %}"
+    >
+
+</head>
+
+
+<body class="app-body">
+
+{% with current=request.resolver_match.url_name %}
+
+<div class="app-layout">
+
+
+    <!-- ==================================================
+         SIDEBAR
+         ================================================== -->
+
+    <aside
+        class="app-sidebar"
+        id="app-sidebar"
+    >
+
+        <!-- MARCA -->
+
+        <a
+            class="sidebar-brand"
+            href="{% url 'documentos:cargar_lote' %}"
+        >
+
+            <span class="sidebar-brand-logo">
+
+                {% if institucion.logotipo %}
+
+                    <img
+                        src="{{ institucion.logotipo.url }}"
+                        alt="Logotipo de {{ institucion.nombre_organizacion }}"
+                    >
+
+                {% else %}
+
+                    <span class="sidebar-brand-fallback">
+                        MC
+                    </span>
+
+                {% endif %}
+
+            </span>
+
+
+            <span class="sidebar-brand-copy">
+
+                <strong>
+                    {{ institucion.nombre_organizacion }}
+                </strong>
+
+                <small>
+                    Automatización Contable
+                </small>
+
+            </span>
+
+        </a>
+
+
+        <!-- NAVEGACIÓN -->
+
+        <nav
+            class="sidebar-nav"
+            aria-label="Navegación principal"
+        >
+
+            <a
+                class="sidebar-link {% if current == 'cargar_lote' %}active{% endif %}"
+                href="{% url 'documentos:cargar_lote' %}"
+            >
+
+                <span class="sidebar-icon">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path d="M4 5h16v14H4z"></path>
+                        <path d="M8 9h8M8 13h5"></path>
+                    </svg>
+
+                </span>
+
+                <span>
+                    Nueva carga
+                </span>
+
+            </a>
+
+
+            <a
+                class="sidebar-link {% if current == 'historial_lotes' or current == 'previsualizar_lote' %}active{% endif %}"
+                href="{% url 'documentos:historial_lotes' %}"
+            >
+
+                <span class="sidebar-icon">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path d="M5 5h14v14H5z"></path>
+                        <path d="M8 9h8M8 12h8M8 15h5"></path>
+                    </svg>
+
+                </span>
+
+                <span>
+                    Historial
+                </span>
+
+            </a>
+
+
+            <!-- CONFIGURACIÓN -->
+
+            <div class="sidebar-group">
+
+                <div class="sidebar-group-title">
+
+                    <span class="sidebar-icon">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.4 3.1a7 7 0 0 0-1.7 1l-2.4-1-2 3.4L5 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 3.1h5l.4-3.1a7 7 0 0 0 1.7-1l2.4 1 2-3.4L19 13a7 7 0 0 0 .1-1z"></path>
+                        </svg>
+
+                    </span>
+
+                    <span>
+                        Configuración
+                    </span>
+
+                </div>
+
+
+                <div class="sidebar-subnav">
+
+                    <a
+                        class="sidebar-sublink {% if current == 'configurar_proyectos' %}active{% endif %}"
+                        href="{% url 'documentos:configurar_proyectos' %}"
+                    >
+                        Empresas y proyectos
+                    </a>
+
+
+                    <a
+                        class="sidebar-sublink {% if current == 'configurar_catalogos' or current == 'confirmar_catalogo' %}active{% endif %}"
+                        href="{% url 'documentos:configurar_catalogos' %}"
+                    >
+                        Catálogos contables
+                    </a>
+
+
+                    <a
+                        class="sidebar-sublink {% if current == 'configurar_institucion' %}active{% endif %}"
+                        href="{% url 'documentos:configurar_institucion' %}"
+                    >
+                        Institución
+                    </a>
+
+                </div>
+
+            </div>
+
+        </nav>
+
+
+        <!-- PIE SIDEBAR -->
+
+        <div class="sidebar-footer">
+
+            <div class="sidebar-footer-mark">
+                MC
+            </div>
+
+            <div>
+                <strong>
+                    Control contable
+                </strong>
+
+                <span>
+                    {% now "Y" %}
+                </span>
+            </div>
+
+        </div>
+
+    </aside>
+
+
+    <!-- ==================================================
+         ÁREA PRINCIPAL
+         ================================================== -->
+
+    <div class="app-main">
+
+
+        <!-- TOPBAR -->
+
+        <header class="app-topbar">
+
+            <button
+                class="app-menu-button"
+                type="button"
+                aria-label="Abrir navegación"
+                aria-expanded="false"
+                aria-controls="app-sidebar"
+            >
+
+                <span></span>
+                <span></span>
+                <span></span>
+
+            </button>
+
+
+            <div class="app-topbar-copy">
+
+                <span>
+                    {{ institucion.nombre_organizacion }}
+                </span>
+
+                <small>
+                    {{ institucion.subtitulo }}
+                </small>
+
+            </div>
+
+
+            <div class="app-topbar-status">
+
+                <span class="app-status-dot"></span>
+
+                <span>
+                    Sistema operativo
+                </span>
+
+            </div>
+
+        </header>
+
+
+        <!-- CONTENIDO -->
+
+        <main class="app-content">
+
+            {% if messages %}
+
+                <div class="app-messages">
+
+                    {% for message in messages %}
+
+                        <div class="flash {{ message.tags }}">
+                            {{ message }}
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+
+            {% block content %}
+            {% endblock %}
+
+        </main>
+
+
+        <!-- FOOTER -->
+
+        <footer class="app-footer">
+
+            <span>
+                <strong>
+                    {{ institucion.nombre_organizacion }}
+                </strong>
+
+                · {{ institucion.subtitulo }}
+            </span>
+
+            <span>
+                {% now "Y" %}
+            </span>
+
+        </footer>
+
+    </div>
+
+</div>
+
+
+<!-- OVERLAY MOBILE -->
+
+<div
+    class="sidebar-overlay"
+    id="sidebar-overlay"
+></div>
+
+
+<script>
+
+    const menuButton = document.querySelector('.app-menu-button');
+    const sidebar = document.querySelector('#app-sidebar');
+    const overlay = document.querySelector('#sidebar-overlay');
+
+    function closeSidebar() {
+
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('visible');
+
+        menuButton?.setAttribute(
+            'aria-expanded',
+            'false'
+        );
+
+    }
+
+    menuButton?.addEventListener(
+        'click',
+        () => {
+
+            const isOpen =
+                sidebar.classList.toggle('open');
+
+            overlay.classList.toggle(
+                'visible',
+                isOpen
+            );
+
+            menuButton.setAttribute(
+                'aria-expanded',
+                String(isOpen)
+            );
+
+        }
+    );
+
+    overlay?.addEventListener(
+        'click',
+        closeSidebar
+    );
+
+    document
+        .querySelectorAll('.sidebar-link, .sidebar-sublink')
+        .forEach(
+            link => link.addEventListener(
+                'click',
+                closeSidebar
+            )
+        );
+
+</script>
+
+
+{% block scripts %}
+{% endblock %}
+
+{% endwith %}
+
+</body>
+
+</html>

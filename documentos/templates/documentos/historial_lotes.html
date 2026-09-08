@@ -1,0 +1,217 @@
+{% extends 'documentos/base.html' %}
+
+{% block title %}Historial de lotes{% endblock %}
+
+{% block content %}
+
+<section class="catalog-header">
+    <div>
+        <p class="eyebrow">Consulta</p>
+
+        <h1>Historial de lotes</h1>
+
+        <p>
+            Revisa lotes procesados y vuelve a descargar los diarios ya exportados.
+        </p>
+    </div>
+
+    <a
+        class="secondary link-button"
+        href="{% url 'documentos:cargar_lote' %}"
+    >
+        Procesar facturas
+    </a>
+</section>
+
+
+<section class="panel catalog-results">
+
+    <form method="get" class="history-filter-form">
+
+        <div class="history-search-box">
+            <label for="history-search">
+                Buscar por lote, proveedor, RUC o factura
+            </label>
+
+            <input
+                id="history-search"
+                name="q"
+                value="{{ query }}"
+                placeholder="Ej. 2175, proveedor o RUC"
+            >
+        </div>
+
+
+        <div class="history-filter-item">
+            <label>Empresa</label>
+
+            <select name="empresa">
+                <option value="">Todas las empresas</option>
+
+                {% for item in empresas %}
+                    <option value="{{ item.id }}">
+                        {{ item.nombre }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="history-filter-item">
+            <label>Proyecto</label>
+
+            <select name="proyecto">
+                <option value="">Todos los proyectos</option>
+
+                {% for item in proyectos %}
+                    <option value="{{ item.id }}">
+                        {{ item.codigo }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="history-filter-item">
+            <label>Estado</label>
+
+            <select name="estado">
+                <option value="">Todos los estados</option>
+
+                {% for value,label in estados %}
+                    <option value="{{ value }}">
+                        {{ label }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="history-filter-action">
+            <button
+                class="primary"
+                type="submit"
+            >
+                Buscar
+            </button>
+        </div>
+
+    </form>
+
+
+    <div class="table-wrap">
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Lote</th>
+                    <th>Fecha</th>
+                    <th>Empresa / proyecto</th>
+                    <th>Estado</th>
+                    <th>Documentos</th>
+                    <th>Débito</th>
+                    <th>Crédito</th>
+                    <th>Diferencia</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+
+
+            <tbody>
+
+                {% for lote in lotes %}
+
+                    <tr>
+
+                        <td>
+                            #{{ lote.id }}
+                        </td>
+
+                        <td>
+                            {{ lote.fecha_creacion|date:"Y-m-d H:i" }}
+                        </td>
+
+                        <td>
+                            {{ lote.empresa }} · {{ lote.proyecto }}
+                        </td>
+
+                        <td>
+                            <span class="status {{ lote.estado|lower }}">
+                                {{ lote.estado }}
+                            </span>
+                        </td>
+
+                        <td>
+                            {{ lote.documentos }}
+                        </td>
+
+                        <td>
+                            ${{ lote.total_debito }}
+                        </td>
+
+                        <td>
+                            ${{ lote.total_credito }}
+                        </td>
+
+                        <td>
+                            ${{ lote.diferencia }}
+                        </td>
+
+                        <td>
+                            <a
+                                class="history-link"
+                                href="{% url 'documentos:previsualizar_lote' lote.id %}"
+                            >
+                                Abrir
+                            </a>
+                        </td>
+
+                    </tr>
+
+                {% empty %}
+
+                    <tr>
+                        <td colspan="9">
+                            No hay lotes para mostrar.
+                        </td>
+                    </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+
+    {% if page_obj.paginator.num_pages > 1 %}
+
+        <nav
+            class="pagination"
+            aria-label="Paginación"
+        >
+            <span>
+                Página {{ page_obj.number }}
+                de {{ page_obj.paginator.num_pages }}
+            </span>
+
+            {% if page_obj.has_previous %}
+                <a href="?q={{ query|urlencode }}&page={{ page_obj.previous_page_number }}">
+                    Anterior
+                </a>
+            {% endif %}
+
+            {% if page_obj.has_next %}
+                <a href="?q={{ query|urlencode }}&page={{ page_obj.next_page_number }}">
+                    Siguiente
+                </a>
+            {% endif %}
+        </nav>
+
+    {% endif %}
+
+</section>
+
+{% endblock %}

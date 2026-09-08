@@ -1,0 +1,33 @@
+# Archivos de referencia reales: nunca deben versionarse.
+/archivos_prueba/
+
+# Fixtures copiados desde documentos reales: se usan solo en pruebas locales.
+/documentos/tests/fixtures/*.xls
+
+# Entorno local y datos generados por Django.
+/.venv/
+/.venv-respaldo-*/
+/.venv312/
+/db.sqlite3
+/media/
+/.test_artifacts/
+/.upload_temp/
+__pycache__/
+*.py[cod]
+
+# Herramientas de desarrollo.
+.pytest_cache/
+.coverage
+
+# Variables de entorno y secretos.
+.env
+.env.*
+!.env.example
+
+# Archivos generados.
+staticfiles/
+*.log
+
+# Archivos del sistema.
+.DS_Store
+Thumbs.db
