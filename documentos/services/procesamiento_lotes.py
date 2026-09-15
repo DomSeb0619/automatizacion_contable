@@ -192,11 +192,17 @@ def finalize_batch(lote: LoteCarga) -> None:
 
 def scope_messages(proyecto: Proyecto, document: ConsultaDocumento) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
-    if document.company != proyecto.empresa.nombre:
+    if company_comparison_key(document.company) != company_comparison_key(proyecto.empresa.nombre):
         messages.append(message("error", "EMPRESA_DIFERENTE", "La empresa detectada no coincide con el lote."))
-    if document.project != proyecto.codigo:
+    expected_project = proyecto.codigo_consulta_documentos or proyecto.codigo
+    if document.project != expected_project:
         messages.append(message("error", "PROYECTO_DIFERENTE", "El proyecto detectado no coincide con el lote."))
     return messages
+
+
+def company_comparison_key(value: str) -> str:
+    """Compara solo diferencias inocuas de mayúsculas, espacios, puntos y comas."""
+    return re.sub(r"[\s.,]+", "", str(value).upper())
 
 
 def exported_document_before(proyecto: Proyecto, provider_key: str) -> DocumentoLote | None:

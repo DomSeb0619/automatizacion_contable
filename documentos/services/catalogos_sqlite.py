@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+import re
+
+from django.db.models import Q
 
 from documentos.models import (
     Empresa,
@@ -30,15 +33,30 @@ class CatalogosMotor:
 
 
 def catalogos_para_documento(document: ConsultaDocumento) -> CatalogosMotor:
-    empresa = Empresa.objects.get(codigo=normalize_identifier(document.company), activa=True)
-    proyecto = Proyecto.objects.get(empresa=empresa, codigo=normalize_code(document.project), activo=True)
-    return catalogos_para_proyecto(proyecto)
+    company_key = company_comparison_key(document.company)
+    empresa = next(
+        (candidate for candidate in Empresa.objects.filter(activa=True) if company_comparison_key(candidate.nombre) == company_key),
+        None,
+    )
+    if empresa is None:
+        raise Empresa.DoesNotExist(document.company)
+    document_project = normalize_code(document.project)
+    proyecto = Proyecto.objects.get(
+        Q(codigo=document_project) | Q(codigo_consulta_documentos=document_project),
+        empresa=empresa,
+        activo=True,
+    )
+    return catalogos_para_proyecto(proyecto, company=document.company, project=document.project)
 
 
-def catalogos_para_proyecto(proyecto: Proyecto) -> CatalogosMotor:
+def catalogos_para_proyecto(
+    proyecto: Proyecto, *, company: str | None = None, project: str | None = None
+) -> CatalogosMotor:
     empresa = proyecto.empresa
+    company_scope = company or empresa.nombre
+    project_scope = project or proyecto.codigo
     rubros = [
-        RubroAccount(empresa.nombre, proyecto.codigo, mapping.codigo_rubro, mapping.cuenta_contable)
+        RubroAccount(company_scope, project_scope, mapping.codigo_rubro, mapping.cuenta_contable)
         for mapping in MapeoRubroCuenta.objects.filter(
             proyecto=proyecto,
             activo=True,
@@ -51,7 +69,7 @@ def catalogos_para_proyecto(proyecto: Proyecto) -> CatalogosMotor:
         if mapping.categoria
     ]
     categories = [
-        CategoryGeneralAccount(empresa.nombre, proyecto.codigo, mapping.categoria, mapping.cuenta_general_original)
+        CategoryGeneralAccount(company_scope, project_scope, mapping.categoria, mapping.cuenta_general_original)
         for mapping in MapeoCategoriaCuenta.objects.filter(proyecto=proyecto, activo=True)
     ]
     return CatalogosMotor(rubros, products, categories)
@@ -86,3 +104,7 @@ def resolve_categoria_cuenta(proyecto: Proyecto, categoria: str) -> MapeoCategor
         return MapeoCategoriaCuenta.objects.get(proyecto=proyecto, categoria=" ".join(categoria.upper().split()), activo=True)
     except MapeoCategoriaCuenta.DoesNotExist as error:
         raise CatalogoNoResuelto(f"No existe cuenta para la categoria {categoria}.") from error
+
+
+def company_comparison_key(value: str) -> str:
+    return re.sub(r"[\s.,]+", "", str(value).upper())

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from uuid import uuid4
@@ -152,3 +153,15 @@ class CatalogosSQLiteTests(TestCase):
         self.assertEqual(result.total_debits, Decimal("5330.75"))
         self.assertEqual(result.total_credits, Decimal("5330.75"))
         self.assertEqual([entry.account for entry in result.entries[:2]], ["IZEEHE5", "IZEEHE7"])
+
+    def test_catalogs_for_consulta_alias_keep_budget_records_but_match_document_scope(self) -> None:
+        fixture = Path(__file__).parent / "fixtures" / "factura_2175.xls"
+        document = read_consulta_documento(fixture)
+        empresa = Empresa.objects.create(nombre="IBIS MILA S.C.C", codigo="IBIS-MILA-SCC")
+        proyecto = Proyecto.objects.create(
+            empresa=empresa, codigo="1", codigo_consulta_documentos="IBIS MILA SCC", nombre="MILA"
+        )
+        MapeoRubroCuenta.objects.create(proyecto=proyecto, codigo_rubro="1.2.3.2.3.05", descripcion="Rubro", tipo="V", cuenta_contable="CTA")
+        alias_document = replace(document, company="IBIS MILA S.C.C.", project="IBIS MILA SCC")
+        catalogs = catalogos_para_documento(alias_document)
+        self.assertEqual(catalogs.rubro_accounts[0].project, "IBIS MILA SCC")

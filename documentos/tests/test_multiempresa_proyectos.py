@@ -42,3 +42,7 @@ class MultiempresaProyectoTests(TestCase):
         self.empresa_b.save()
         self.assertFalse(Proyecto.objects.get(pk=self.proyecto_a.pk).activo)
         self.assertFalse(Empresa.objects.get(pk=self.empresa_b.pk).activa)
+
+    def test_project_form_exposes_optional_consulta_documentos_code(self):
+        response = self.client.get('/proyectos/')
+        self.assertContains(response, 'Código Consulta de Documentos')

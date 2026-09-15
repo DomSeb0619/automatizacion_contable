@@ -10,7 +10,7 @@ from django.test import TestCase
 
 from documentos.models import DocumentoLote, Empresa, LineaReclasificacion, LoteCarga, MapeoCategoriaCuenta, MapeoProductoIVA, MapeoRubroCuenta, Proyecto, normalize_identifier
 from documentos.services.consulta_documentos import read_consulta_documento
-from documentos.services.procesamiento_lotes import process_temporary_files
+from documentos.services.procesamiento_lotes import process_temporary_files, scope_messages
 
 
 class ProcesamientoLotesTests(TestCase):
@@ -108,6 +108,25 @@ class ProcesamientoLotesTests(TestCase):
         self.assertEqual(document.estado, DocumentoLote.Estado.ERROR)
         self.assertEqual(document.lineas.count(), 0)
         self.assertIn("PROYECTO_DIFERENTE", [item["code"] for item in document.mensajes])
+
+    def test_scope_uses_consulta_alias_and_conservative_company_normalization(self) -> None:
+        ibis = Empresa.objects.create(nombre="IBIS MILA S.C.C", codigo="IBIS-MILA-SCC")
+        project = Proyecto.objects.create(
+            empresa=ibis,
+            codigo="1",
+            codigo_consulta_documentos="IBIS MILA SCC",
+            nombre="MILA",
+        )
+        document = replace(self.source_document, company="IBIS MILA S.C.C.", project="IBIS MILA SCC")
+        self.assertEqual(scope_messages(project, document), [])
+
+    def test_scope_falls_back_to_budget_code_and_rejects_wrong_alias_or_company(self) -> None:
+        project = Proyecto.objects.create(empresa=self.empresa, codigo="1", nombre="Uno")
+        self.assertEqual(scope_messages(project, replace(self.source_document, project="1")), [])
+        project.codigo_consulta_documentos = "ALIAS CONSULTA"
+        project.save()
+        self.assertIn("PROYECTO_DIFERENTE", [item["code"] for item in scope_messages(project, replace(self.source_document, project="OTRO"))])
+        self.assertIn("EMPRESA_DIFERENTE", [item["code"] for item in scope_messages(project, replace(self.source_document, company="EMPRESA DISTINTA", project="ALIAS CONSULTA"))])
 
     def test_a_batch_keeps_valid_document_when_another_is_invalid(self) -> None:
         valid_path = self.temporary_copy("valida.xls")

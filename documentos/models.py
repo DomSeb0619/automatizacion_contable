@@ -47,6 +47,11 @@ class Empresa(TimeStampedModel):
 class Proyecto(TimeStampedModel):
     empresa = models.ForeignKey(Empresa, on_delete=models.PROTECT, related_name="proyectos")
     codigo = models.CharField(max_length=100)
+    codigo_consulta_documentos = models.CharField(
+        max_length=150,
+        blank=True,
+        help_text="Identificador mostrado por Consulta de Documentos; no cambia el código presupuestario.",
+    )
     nombre = models.CharField(max_length=255)
     activo = models.BooleanField(default=True)
 
@@ -58,6 +63,7 @@ class Proyecto(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         self.codigo = normalize_identifier(self.codigo)
+        self.codigo_consulta_documentos = normalize_code(self.codigo_consulta_documentos) if self.codigo_consulta_documentos else ""
         self.nombre = " ".join(self.nombre.split())
         super().save(*args, **kwargs)
 

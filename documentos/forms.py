@@ -82,7 +82,10 @@ class EmpresaForm(forms.ModelForm):
 class ProyectoForm(forms.ModelForm):
     class Meta:
         model = Proyecto
-        fields = ['empresa', 'codigo', 'nombre', 'activo']
+        fields = ['empresa', 'codigo', 'codigo_consulta_documentos', 'nombre', 'activo']
+        help_texts = {
+            'codigo_consulta_documentos': 'Opcional. Úsalo cuando Consulta de Documentos entrega un identificador distinto al código presupuestario.',
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

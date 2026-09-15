@@ -83,6 +83,17 @@ class ConfiguracionCatalogosTests(TestCase):
         self.assertEqual(MapeoRubroCuenta.objects.get(proyecto=self.proyecto, codigo_rubro='1.1').cuenta_contable, 'A2')
         self.assertEqual(MapeoRubroCuenta.objects.get(proyecto=self.otro_proyecto, codigo_rubro='1.1').cuenta_contable, 'B1')
 
+    def test_rubro_import_keeps_using_budget_code_when_consulta_alias_exists(self) -> None:
+        self.proyecto.codigo = '1'
+        self.proyecto.codigo_consulta_documentos = 'IBIS MILA SCC'
+        self.proyecto.save()
+        preview = previsualizar_catalogo(
+            self.proyecto,
+            'rubros',
+            self.rubro_workbook([('1', '', '1.1', 'Rubro', 'V', 'CTA-1')]),
+        )
+        self.assertEqual(preview.creados, 1)
+
     def test_full_master_accepts_6445_valid_rows_and_excludes_two_invalid_vat_rows(self) -> None:
         rows = [(f'PROD-{index:04d}', f'Producto {index}', 15) for index in range(1, 6446)]
         rows.extend([('INVALIDO-1', 'No guardar', 9999.99), ('INVALIDO-2', 'No guardar', 9999.99)])
