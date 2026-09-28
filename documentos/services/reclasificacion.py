@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+import re
 
 from documentos.services.consulta_documentos import ConsultaDocumento, Distribution, money
 
@@ -299,6 +300,10 @@ def reconcile_account_bases(
 
 
 def account_code(value: str) -> str:
+    """Extrae el código contable aunque el ERP cambie el separador del detalle."""
+    numeric_code = re.match(r"\s*(\d+(?:\.\d+)*)", value)
+    if numeric_code:
+        return numeric_code.group(1)
     return value.split(" - ", 1)[0].strip()
 
 

@@ -67,7 +67,11 @@ class ConsultaDocumento:
         return tuple(
             account
             for account in self.original_accounts
-            if account.debit > 0 and "INVENTARIO" in account.account.upper()
+            if account.debit > 0
+            and (
+                "INVENTARIO" in account.account.upper()
+                or "INVENTARIO" in account.category.upper()
+            )
         )
 
     @property

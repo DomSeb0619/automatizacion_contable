@@ -4,7 +4,7 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from documentos.services.consulta_documentos import read_consulta_documento
+from documentos.services.consulta_documentos import ConsultaDocumento, Distribution, OriginalAccount, Product, read_consulta_documento
 from documentos.services.reclasificacion import (
     CategoryGeneralAccount,
     ProductVat,
@@ -97,3 +97,57 @@ class Reclassification2175Tests(SimpleTestCase):
 
         self.assertEqual({entry.debit_credit for entry in result.entries[:2]}, {"1"})
         self.assertEqual({entry.debit_credit for entry in result.entries[2:]}, {"2"})
+
+
+class RepeatedInventoryAccountTests(SimpleTestCase):
+    def setUp(self) -> None:
+        debits = ["16.38", "12.28", "32.33", "51.96", "5.62", "21.86", "13.20", "5.36", "36.37", "27.69"]
+        self.document = ConsultaDocumento(
+            company="IBIS MILA S.C.C.",
+            project="IBIS MILA SCC",
+            supplier="MACONSMIL CIA. LTDA.",
+            supplier_tax_id="",
+            erp_document_number="",
+            supplier_invoice_number="001-002-000011397",
+            products=(Product("IZ-101001", "Material", Decimal("1"), Decimal("223.05"), Decimal("223.05"), Decimal("223.05")),),
+            subtotal=Decimal("223.05"),
+            vat=Decimal("26.63"),
+            total=Decimal("249.68"),
+            distributions=(
+                Distribution("IBIS MILA SCC", "1.2.10.1.0", "MATERIALES", Decimal("150.11")),
+                Distribution("IBIS MILA SCC", "1.2.10.1.0", "MATERIALES", Decimal("27.80")),
+                Distribution("IBIS MILA SCC", "1.2.4.1.01", "MATERIALES", Decimal("17.20")),
+                Distribution("IBIS MILA SCC", "1.2.6.3.04", "MATERIALES", Decimal("54.56")),
+            ),
+            original_accounts=tuple(
+                OriginalAccount("INVENTARIOS", f"101030101- MOVIMIENTO {index}", Decimal(amount), Decimal("0"), "", "")
+                for index, amount in enumerate(debits, start=1)
+            ),
+        )
+        self.rubros = [
+            RubroAccount(self.document.company, self.document.project, code, account)
+            for code, account in [
+                ("1.2.10.1.0", "R1"), ("1.2.4.1.01", "R2"), ("1.2.6.3.04", "R3"),
+            ]
+        ]
+        self.categories = [CategoryGeneralAccount(self.document.company, self.document.project, "MATERIALES", "101030101")]
+
+    def test_repeated_inventory_movements_for_one_code_are_reclassified(self) -> None:
+        result = build_reclassification(self.document, self.rubros, [], self.categories)
+
+        error_codes = [error.code for error in result.errors]
+        self.assertNotIn("DIFERENCIA_CONTABLE", error_codes)
+        self.assertNotIn("CASO_AMBIGUO_CUENTA_GENERAL", error_codes)
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.total_debits, Decimal("223.05"))
+        self.assertEqual(result.total_credits, Decimal("223.05"))
+        self.assertEqual([entry.account for entry in result.entries if entry.debit_credit == "2"], ["101030101"])
+
+    def test_two_different_inventory_codes_remain_ambiguous(self) -> None:
+        accounts = list(self.document.original_accounts)
+        accounts[-1] = OriginalAccount("INVENTARIOS", "101030102- OTRO", Decimal("27.69"), Decimal("0"), "", "")
+        result = build_reclassification(
+            replace(self.document, original_accounts=tuple(accounts)), self.rubros, [], []
+        )
+
+        self.assertIn("CASO_AMBIGUO_CUENTA_GENERAL", [error.code for error in result.errors])
