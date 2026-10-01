@@ -21,8 +21,8 @@ class ProcesamientoLotesTests(TestCase):
         self.proyecto = Proyecto.objects.create(empresa=self.empresa, codigo=self.source_document.project, nombre=self.source_document.project)
         MapeoRubroCuenta.objects.create(proyecto=self.proyecto, codigo_rubro="1.2.3.2.3.05", descripcion="Cubierta", tipo="V", cuenta_contable="IZEEHE5")
         MapeoRubroCuenta.objects.create(proyecto=self.proyecto, codigo_rubro="1.2.3.2.3.07", descripcion="Escaleras", tipo="V", cuenta_contable="IZEEHE7")
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="IZ-101135", descripcion="Hormigon", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="IZ-301004", descripcion="Alquiler", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="PRD-2175-A", descripcion="Material sintetico", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="PRD-2175-B", descripcion="Servicio sintetico", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria="MATERIALES", cuenta_general_original="101031005")
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria="EQUIPO Y MAQUINARIA", cuenta_general_original="101031003")
 
@@ -57,8 +57,8 @@ class ProcesamientoLotesTests(TestCase):
             ],
         )
         self.assertIn("CONFLICTO_IVA_MAESTRO", [item["code"] for item in document.mensajes])
-        self.assertEqual(document.numero_factura_proveedor, "033-002- 000002175")
-        self.assertEqual(document.numero_factura_normalizado, "033-002-000002175")
+        self.assertEqual(document.numero_factura_proveedor, "001-001- 000002175")
+        self.assertEqual(document.numero_factura_normalizado, "001-001-000002175")
 
     def test_marks_same_file_twice_in_one_batch_as_duplicate(self) -> None:
         result = process_temporary_files(self.proyecto, [self.temporary_copy("a.xls"), self.temporary_copy("b.xls")])

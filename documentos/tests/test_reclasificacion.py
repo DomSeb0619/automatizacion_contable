@@ -18,12 +18,12 @@ class Reclassification2175Tests(SimpleTestCase):
         fixture = Path(__file__).parent / "fixtures" / "factura_2175.xls"
         self.document = read_consulta_documento(fixture)
         self.rubros = [
-            RubroAccount(self.document.company, self.document.project, "1.2.3.2.3.05 - Hormigon premezclado 280 kgcm2 en losas y vigas de cubierta", "IZEEHE5"),
-            RubroAccount(self.document.company, self.document.project, "1.2.3.2.3.07 - Hormigon premezclado 280 kgcm2 en escaleras comunales y privadas", "IZEEHE7"),
+            RubroAccount(self.document.company, self.document.project, "1.2.3.2.3.05 - RUBRO SINTETICO A", "IZEEHE5"),
+            RubroAccount(self.document.company, self.document.project, "1.2.3.2.3.07 - RUBRO SINTETICO B", "IZEEHE7"),
         ]
         self.products = [
-            ProductVat("IZ-101135", "MATERIALES", Decimal("0.15")),
-            ProductVat("IZ-301004", "EQUIPO Y MAQUINARIA", Decimal("0.15")),
+            ProductVat("PRD-2175-A", "MATERIALES", Decimal("0.15")),
+            ProductVat("PRD-2175-B", "EQUIPO Y MAQUINARIA", Decimal("0.15")),
         ]
         self.categories = [
             CategoryGeneralAccount(self.document.company, self.document.project, "MATERIALES", "101031005"),
@@ -88,7 +88,7 @@ class Reclassification2175Tests(SimpleTestCase):
         result = self.build()
 
         warning = next(warning for warning in result.warnings if warning.code == "CONFLICTO_IVA_MAESTRO")
-        self.assertIn("IZ-101135", warning.message)
+        self.assertIn("PRD-2175-A", warning.message)
         self.assertIn("15.00%", warning.message)
         self.assertIn("5.00%", warning.message)
 
@@ -105,7 +105,7 @@ class RepeatedInventoryAccountTests(SimpleTestCase):
         self.document = ConsultaDocumento(
             company="IBIS MILA S.C.C.",
             project="IBIS MILA SCC",
-            supplier="MACONSMIL CIA. LTDA.",
+            supplier="PROVEEDOR SINTETICO MILA S.A.",
             supplier_tax_id="",
             erp_document_number="",
             supplier_invoice_number="001-002-000011397",
@@ -146,8 +146,80 @@ class RepeatedInventoryAccountTests(SimpleTestCase):
     def test_two_different_inventory_codes_remain_ambiguous(self) -> None:
         accounts = list(self.document.original_accounts)
         accounts[-1] = OriginalAccount("INVENTARIOS", "101030102- OTRO", Decimal("27.69"), Decimal("0"), "", "")
+        document = replace(
+            self.document,
+            original_accounts=tuple(accounts),
+            products=(
+                Product("IZ-101001", "Material 5", Decimal("1"), Decimal("1"), Decimal("1"), Decimal("1")),
+                Product("IZ-101002", "Material 15", Decimal("1"), Decimal("1"), Decimal("1"), Decimal("1")),
+            ),
+        )
+        products = [
+            ProductVat("IZ-101001", "MATERIALES", Decimal("0.05")),
+            ProductVat("IZ-101002", "MATERIALES", Decimal("0.15")),
+        ]
         result = build_reclassification(
-            replace(self.document, original_accounts=tuple(accounts)), self.rubros, [], []
+            document, self.rubros, products, []
         )
 
         self.assertIn("CASO_AMBIGUO_CUENTA_GENERAL", [error.code for error in result.errors])
+
+    def test_mixed_vat_uses_the_unique_original_base_without_changing_invoice_totals(self) -> None:
+        products = [
+            ProductVat("IZ-101001", "MATERIALES", Decimal("0.05")),
+            ProductVat("IZ-101002", "MATERIALES", Decimal("0.15")),
+        ]
+        document = replace(
+            self.document,
+            products=(
+                Product("IZ-101001", "Material 5", Decimal("1"), Decimal("1"), Decimal("1"), Decimal("1")),
+                Product("IZ-101002", "Material 15", Decimal("1"), Decimal("1"), Decimal("1"), Decimal("1")),
+            ),
+        )
+
+        result = build_reclassification(document, self.rubros, products, self.categories)
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(document.subtotal, Decimal("223.05"))
+        self.assertEqual(document.vat, Decimal("26.63"))
+        self.assertEqual(result.total_debits, Decimal("223.05"))
+        self.assertEqual(result.total_credits, Decimal("223.05"))
+        self.assertEqual(result.difference, Decimal("0.00"))
+        self.assertEqual(
+            [(entry.account, entry.amount) for entry in result.entries if entry.debit_credit == "2"],
+            [("101030101", Decimal("223.05"))],
+        )
+        warning = next(warning for warning in result.warnings if warning.code == "IVA_MIXTO_RECONCILIADO_CON_ASIENTO")
+        self.assertIn("MATERIALES", warning.message)
+        self.assertIn("101030101", warning.message)
+
+    def test_mixed_vat_cent_adjustment_is_deterministic(self) -> None:
+        document = replace(
+            self.document,
+            distributions=(
+                Distribution("IBIS MILA SCC", "1.2.10.1.0", "MATERIALES", Decimal("1.00")),
+                Distribution("IBIS MILA SCC", "1.2.4.1.01", "MATERIALES", Decimal("1.00")),
+                Distribution("IBIS MILA SCC", "1.2.6.3.04", "MATERIALES", Decimal("1.00")),
+            ),
+            original_accounts=(OriginalAccount("INVENTARIOS", "101030101 - INVENTARIO", Decimal("1.00"), Decimal("0"), "", ""),),
+            subtotal=Decimal("1.00"),
+            vat=Decimal("0.00"),
+            total=Decimal("1.00"),
+            products=(
+                Product("IZ-101001", "Material 5", Decimal("1"), Decimal("1"), Decimal("1"), Decimal("1")),
+                Product("IZ-101002", "Material 15", Decimal("1"), Decimal("1"), Decimal("1"), Decimal("1")),
+            ),
+        )
+        products = [
+            ProductVat("IZ-101001", "MATERIALES", Decimal("0.05")),
+            ProductVat("IZ-101002", "MATERIALES", Decimal("0.15")),
+        ]
+
+        result = build_reclassification(document, self.rubros, products, self.categories)
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(
+            [entry.amount for entry in result.entries if entry.debit_credit == "1"],
+            [Decimal("0.34"), Decimal("0.33"), Decimal("0.33")],
+        )
+        self.assertIn("AJUSTE_CENTAVO_APLICADO", [warning.code for warning in result.warnings])

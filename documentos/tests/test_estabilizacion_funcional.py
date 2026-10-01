@@ -85,8 +85,8 @@ class HistorialLotesTests(TestCase):
         self.proyecto = Proyecto.objects.create(empresa=self.empresa, codigo=source.project, nombre=source.project)
         for code, account in [("1.2.3.2.3.05", "IZEEHE5"), ("1.2.3.2.3.07", "IZEEHE7")]:
             MapeoRubroCuenta.objects.create(proyecto=self.proyecto, codigo_rubro=code, tipo="V", cuenta_contable=account)
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="IZ-101135", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="IZ-301004", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="PRD-2175-A", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="PRD-2175-B", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria="MATERIALES", cuenta_general_original="101031005")
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria="EQUIPO Y MAQUINARIA", cuenta_general_original="101031003")
 
@@ -105,7 +105,7 @@ class HistorialLotesTests(TestCase):
         response = self.client.get(reverse("documentos:historial_lotes"))
         self.assertContains(response, "No hay lotes para mostrar.")
         lote = self.processed_lote()
-        for query in [str(lote.id), "HOLCIM", self.source.supplier_tax_id, "000002175"]:
+        for query in [str(lote.id), "SINTETICO", self.source.supplier_tax_id, "000002175"]:
             response = self.client.get(reverse("documentos:historial_lotes"), {"q": query})
             self.assertContains(response, f"#{lote.id}")
         self.assertEqual(get_batch_history(str(lote.id))["lotes"][0]["id"], lote.id)

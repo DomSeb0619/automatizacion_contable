@@ -3,6 +3,8 @@
 
 # Fixtures copiados desde documentos reales: se usan solo en pruebas locales.
 /documentos/tests/fixtures/*.xls
+!/documentos/tests/fixtures/factura_2175.xls
+!/documentos/tests/fixtures/factura_5347.xls
 
 # Entorno local y datos generados por Django.
 /.venv/

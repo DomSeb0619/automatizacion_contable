@@ -23,13 +23,13 @@ class InterfazWebTests(TestCase):
         self.addCleanup(self.upload_directory.cleanup)
         self.fixture = Path(__file__).parent / 'fixtures' / 'factura_2175.xls'
         self.fixture_bytes = self.fixture.read_bytes()
-        self.empresa = Empresa.objects.create(nombre='MC-INTERVALLES S.C.C.', codigo=normalize_identifier('MC-INTERVALLES S.C.C.'))
+        self.empresa = Empresa.objects.create(nombre='EMPRESA DEMO CONSTRUCTORA S.A.', codigo=normalize_identifier('EMPRESA DEMO CONSTRUCTORA S.A.'))
         self.proyecto = Proyecto.objects.create(empresa=self.empresa, codigo='IZARI', nombre='IZARI')
         self.inactivo = Proyecto.objects.create(empresa=self.empresa, codigo='INACTIVO', nombre='No disponible', activo=False)
         MapeoRubroCuenta.objects.create(proyecto=self.proyecto, codigo_rubro='1.2.3.2.3.05', descripcion='Cubierta', tipo='V', cuenta_contable='IZEEHE5')
         MapeoRubroCuenta.objects.create(proyecto=self.proyecto, codigo_rubro='1.2.3.2.3.07', descripcion='Escaleras', tipo='V', cuenta_contable='IZEEHE7')
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto='IZ-101135', porcentaje_iva=Decimal('15'), categoria='MATERIALES')
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto='IZ-301004', porcentaje_iva=Decimal('15'), categoria='EQUIPO Y MAQUINARIA')
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto='PRD-2175-A', porcentaje_iva=Decimal('15'), categoria='MATERIALES')
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto='PRD-2175-B', porcentaje_iva=Decimal('15'), categoria='EQUIPO Y MAQUINARIA')
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria='MATERIALES', cuenta_general_original='101031005')
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria='EQUIPO Y MAQUINARIA', cuenta_general_original='101031003')
 

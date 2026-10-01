@@ -255,7 +255,22 @@ def calculate_category_bases(
             continue
         rates = {product.vat_rate for product in products.get(category, []) if product.vat_rate is not None}
         if len(rates) > 1:
-            errors.append(Issue("CASO_AMBIGUO_IVA", f"La categoria {category} tiene productos con tarifas de IVA diferentes."))
+            if len(categories_by_account[code]) != 1:
+                errors.append(Issue("CASO_AMBIGUO_IVA", f"La categoria {category} tiene productos con tarifas de IVA diferentes."))
+                continue
+            base = inventory[code]
+            gross = money(sum((distribution.gross_total for distribution in category_distributions), Decimal()))
+            if base <= ZERO or gross <= ZERO:
+                errors.append(Issue("IVA_NO_DETERMINABLE", f"No se puede determinar IVA para la categoria {category}."))
+                continue
+            bases[category] = proportional_bases(category_distributions, base, gross)
+            warnings.append(
+                Issue(
+                    "IVA_MIXTO_RECONCILIADO_CON_ASIENTO",
+                    f"La categoría {category} contiene productos con diferentes tarifas de IVA. "
+                    f"Las bases fueron distribuidas proporcionalmente utilizando el importe original de la cuenta {code}.",
+                )
+            )
             continue
         if len(categories_by_account[code]) == 1:
             base = inventory[code]
@@ -274,6 +289,11 @@ def calculate_category_bases(
                 warnings.append(Issue("CONFLICTO_IVA_MAESTRO", f"{product.product_code}: maestro {percent(product.vat_rate)}; factura {percent(rate)}."))
         bases[category] = [money(distribution.gross_total / (Decimal("1") + rate)) for distribution in category_distributions]
     return bases
+
+
+def proportional_bases(distributions: list[Distribution], original_base: Decimal, gross_total: Decimal) -> list[Decimal]:
+    """Asigna una base contable conocida sin inferir IVA individual por producto."""
+    return [money(distribution.gross_total * original_base / gross_total) for distribution in distributions]
 
 
 def reconcile_account_bases(

@@ -29,7 +29,7 @@ class CatalogosSQLiteTests(TestCase):
         return directory
 
     def create_scope(self):
-        empresa = Empresa.objects.create(nombre="MC-INTERVALLES S.C.C.", codigo="mc-intervalles-scc")
+        empresa = Empresa.objects.create(nombre="EMPRESA DEMO CONSTRUCTORA S.A.", codigo="empresa-demo")
         return empresa, Proyecto.objects.create(empresa=empresa, codigo="IZARI", nombre="IZARI")
 
     def rubros_workbook(self, directory: Path, account: str = "IZEEHE5") -> Path:
@@ -39,7 +39,7 @@ class CatalogosSQLiteTests(TestCase):
         sheet.title = "Hoja2"
         sheet.append(["CODIGO DE PROYECTO", "CODIGO DEL RUBRO PADRE", "CODIGO DE RUBRO", "DESCRIPCION DEL RUBRO", "TIPO", "CUENTAS"])
         sheet.append(["3", "0", "1", "IZARI", "P", "1010309"])
-        sheet.append(["3", "1", "1.2.3.2.3.05", "Hormigon cubierta", "V", account])
+        sheet.append(["3", "1", "1.2.3.2.3.05", "Rubro sintetico", "V", account])
         workbook.save(path)
         return path
 
@@ -48,8 +48,8 @@ class CatalogosSQLiteTests(TestCase):
         workbook = Workbook()
         sheet = workbook.active
         sheet.append(["codprod01", "desprod01", "porciva01"])
-        sheet.append(["IZ-101135", "Hormigon", "9999.99" if invalid else "15.00"])
-        sheet.append(["IZ-301004", "Alquiler", "15.00"])
+        sheet.append(["PRD-2175-A", "Producto sintetico A", "9999.99" if invalid else "15.00"])
+        sheet.append(["PRD-2175-B", "Producto sintetico B", "15.00"])
         workbook.save(path)
         return path
 
@@ -63,7 +63,7 @@ class CatalogosSQLiteTests(TestCase):
         empresa, proyecto = self.create_scope()
         with transaction.atomic():
             with self.assertRaises(IntegrityError):
-                Empresa.objects.create(nombre="Otra", codigo="MC-INTERVALLES-SCC")
+                Empresa.objects.create(nombre="Otra", codigo="EMPRESA-DEMO")
         MapeoRubroCuenta.objects.create(proyecto=proyecto, codigo_rubro="1.1", descripcion="", tipo="V", cuenta_contable="A")
         with transaction.atomic():
             with self.assertRaises(IntegrityError):
@@ -113,7 +113,7 @@ class CatalogosSQLiteTests(TestCase):
         self.assertIn("creados=1", output)
         self.assertIn("errores=1", output)
         self.assertIn("fuera de rango", errors)
-        self.assertFalse(MapeoProductoIVA.objects.filter(codigo_producto="IZ-101135").exists())
+        self.assertFalse(MapeoProductoIVA.objects.filter(codigo_producto="PRD-2175-A").exists())
 
     def test_resolves_only_final_v_rubros(self) -> None:
         _, proyecto = self.create_scope()
@@ -126,12 +126,12 @@ class CatalogosSQLiteTests(TestCase):
     def test_resolves_product_vat_and_category_account(self) -> None:
         empresa, proyecto = self.create_scope()
         product = MapeoProductoIVA.objects.create(
-            proyecto=proyecto, codigo_producto="IZ-101135", descripcion="Hormigon", porcentaje_iva=Decimal("15"), categoria="MATERIALES"
+            proyecto=proyecto, codigo_producto="PRD-2175-A", descripcion="Producto sintetico", porcentaje_iva=Decimal("15"), categoria="MATERIALES"
         )
         category = MapeoCategoriaCuenta.objects.create(
             proyecto=proyecto, categoria="MATERIALES", cuenta_general_original="101031005"
         )
-        self.assertEqual(resolve_producto_iva(proyecto, "iz-101135"), product)
+        self.assertEqual(resolve_producto_iva(proyecto, "prd-2175-a"), product)
         self.assertEqual(resolve_categoria_cuenta(proyecto, "materiales"), category)
 
     def test_control_case_uses_persisted_catalogs(self) -> None:
@@ -141,8 +141,8 @@ class CatalogosSQLiteTests(TestCase):
         proyecto = Proyecto.objects.create(empresa=empresa, codigo=document.project, nombre=document.project)
         MapeoRubroCuenta.objects.create(proyecto=proyecto, codigo_rubro="1.2.3.2.3.05", descripcion="Cubierta", tipo="V", cuenta_contable="IZEEHE5")
         MapeoRubroCuenta.objects.create(proyecto=proyecto, codigo_rubro="1.2.3.2.3.07", descripcion="Escaleras", tipo="V", cuenta_contable="IZEEHE7")
-        MapeoProductoIVA.objects.create(proyecto=proyecto, codigo_producto="IZ-101135", descripcion="Hormigon", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
-        MapeoProductoIVA.objects.create(proyecto=proyecto, codigo_producto="IZ-301004", descripcion="Alquiler", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
+        MapeoProductoIVA.objects.create(proyecto=proyecto, codigo_producto="PRD-2175-A", descripcion="Producto sintetico A", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
+        MapeoProductoIVA.objects.create(proyecto=proyecto, codigo_producto="PRD-2175-B", descripcion="Producto sintetico B", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
         MapeoCategoriaCuenta.objects.create(proyecto=proyecto, categoria="MATERIALES", cuenta_general_original="101031005")
         MapeoCategoriaCuenta.objects.create(proyecto=proyecto, categoria="EQUIPO Y MAQUINARIA", cuenta_general_original="101031003")
 

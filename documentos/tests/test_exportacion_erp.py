@@ -29,8 +29,8 @@ class ExportacionErpTests(TestCase):
         self.proyecto = Proyecto.objects.create(empresa=empresa, codigo=self.source_document.project, nombre=self.source_document.project)
         MapeoRubroCuenta.objects.create(proyecto=self.proyecto, codigo_rubro="1.2.3.2.3.05", descripcion="Cubierta", tipo="V", cuenta_contable="IZEEHE5")
         MapeoRubroCuenta.objects.create(proyecto=self.proyecto, codigo_rubro="1.2.3.2.3.07", descripcion="Escaleras", tipo="V", cuenta_contable="IZEEHE7")
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="IZ-101135", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
-        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="IZ-301004", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="PRD-2175-A", porcentaje_iva=Decimal("15"), categoria="MATERIALES")
+        MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto="PRD-2175-B", porcentaje_iva=Decimal("15"), categoria="EQUIPO Y MAQUINARIA")
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria="MATERIALES", cuenta_general_original="101031005")
         MapeoCategoriaCuenta.objects.create(proyecto=self.proyecto, categoria="EQUIPO Y MAQUINARIA", cuenta_general_original="101031003")
 
@@ -63,7 +63,7 @@ class ExportacionErpTests(TestCase):
         )
         self.assertEqual(sheet.cell_type(1, 0), xlrd.XL_CELL_TEXT)
         self.assertEqual(sheet.cell_type(1, 1), xlrd.XL_CELL_NUMBER)
-        self.assertEqual(sheet.cell_value(1, 3), "RECLASIFICACION F 2175 HOLCIM ECUADOR S.A.")
+        self.assertEqual(sheet.cell_value(1, 3), "RECLASIFICACION F 2175 PROVEEDOR SINTETICO HORMIGON S.A.")
         self.assertTrue(all(sheet.cell_value(row, column) == "" for row in range(1, 5) for column in range(4, 10)))
         self.assertEqual(exported.filename, f"diario_reclasificacion_lote_{lote.id}.xls")
         self.assertEqual(exported.content_type, "application/vnd.ms-excel")
@@ -168,5 +168,5 @@ class ExportacionErpTests(TestCase):
         lote = self.processed_lote()
         document = lote.documentos.get()
 
-        self.assertEqual(document.numero_factura_normalizado, "033-002-000002175")
-        self.assertEqual(journal_detail(document), "RECLASIFICACION F 2175 HOLCIM ECUADOR S.A.")
+        self.assertEqual(document.numero_factura_normalizado, "001-001-000002175")
+        self.assertEqual(journal_detail(document), "RECLASIFICACION F 2175 PROVEEDOR SINTETICO HORMIGON S.A.")

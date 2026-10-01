@@ -47,10 +47,10 @@ class Factura5347MotorTests(SimpleTestCase):
         self.assertEqual(
             [(entry.rubro, entry.account, entry.amount, entry.debit_credit) for entry in result.entries],
             [
-                ("1.2.3.5.3.02 - Porcelanato en escaleras", "IZEREC2", Decimal("1038.32"), "1"),
-                ("1.2.3.5.3.03 - Porcelanato en hall de circulacion comunales en general", "IZEREC3", Decimal("4949.28"), "1"),
-                ("1.2.4.2.04 - Recubrimiento exteriores de piscina", "IZEEP4", Decimal("920.54"), "1"),
-                ("1.2.4.3.01 - Recubrimiento de piso incluye desperdicio 10", "IZEEB1", Decimal("1832.56"), "1"),
+                ("1.2.3.5.3.02 - RUBRO SINTETICO 01", "IZEREC2", Decimal("1038.32"), "1"),
+                ("1.2.3.5.3.03 - RUBRO SINTETICO 02", "IZEREC3", Decimal("4949.28"), "1"),
+                ("1.2.4.2.04 - RUBRO SINTETICO 03", "IZEEP4", Decimal("920.54"), "1"),
+                ("1.2.4.3.01 - RUBRO SINTETICO 04", "IZEEB1", Decimal("1832.56"), "1"),
                 (None, "101031001", Decimal("8740.70"), "2"),
             ],
         )
@@ -58,16 +58,18 @@ class Factura5347MotorTests(SimpleTestCase):
         self.assertEqual(warning_codes.count("PRODUCTO_SIN_IVA_MAESTRO"), 5)
         self.assertIn("CONFLICTO_CUENTA_GENERAL_MAPEO", warning_codes)
 
-    def test_multiple_vat_rates_without_distribution_relation_blocks(self) -> None:
+    def test_multiple_vat_rates_use_the_unique_original_account_proportionally(self) -> None:
         products = [
-            ProductVat("IZ-1011042", "MATERIALES", Decimal("0.05")),
-            ProductVat("IZ-1011043", "MATERIALES", Decimal("0.15")),
+            ProductVat("PRD-5347-01", "MATERIALES", Decimal("0.05")),
+            ProductVat("PRD-5347-02", "MATERIALES", Decimal("0.15")),
         ]
 
         result = self.build(products=products)
 
-        self.assertFalse(result.is_valid)
-        self.assertIn("CASO_AMBIGUO_IVA", [error.code for error in result.errors])
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.total_debits, Decimal("8740.70"))
+        self.assertEqual(result.total_credits, Decimal("8740.70"))
+        self.assertIn("IVA_MIXTO_RECONCILIADO_CON_ASIENTO", [warning.code for warning in result.warnings])
 
     def test_multiple_original_accounts_without_relation_blocks(self) -> None:
         accounts = (
