@@ -11,6 +11,7 @@ from documentos.services.consulta_documentos import ConsultaDocumento, Distribut
 
 
 ZERO = Decimal("0.00")
+SUBTOTAL_INVENTORY_TOLERANCE = Decimal("0.02")
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,17 @@ def build_reclassification(
     validate_rubros(document, distributions_by_category, rubro_by_key, errors)
 
     inventory_by_code = aggregate_inventory_accounts(document)
-    if money(sum(inventory_by_code.values(), Decimal())) != document.subtotal:
+    inventory_total = money(sum(inventory_by_code.values(), Decimal()))
+    subtotal_difference = money(document.subtotal - inventory_total)
+    if abs(subtotal_difference) <= SUBTOTAL_INVENTORY_TOLERANCE and subtotal_difference != ZERO:
+        warnings.append(
+            Issue(
+                "TOLERANCIA_REDONDEO_SUBTOTAL_INVENTARIO",
+                f"Existe una diferencia de ${abs(subtotal_difference):.2f} entre el subtotal de la factura y los debitos "
+                f"originales de inventario. Se acepta dentro de la tolerancia de redondeo de ${SUBTOTAL_INVENTORY_TOLERANCE:.2f}.",
+            )
+        )
+    elif subtotal_difference != ZERO:
         errors.append(Issue("DIFERENCIA_CONTABLE", "Los debitos originales de inventario no coinciden con el subtotal de la factura."))
 
     category_by_key = index_category_accounts(category_general_accounts)

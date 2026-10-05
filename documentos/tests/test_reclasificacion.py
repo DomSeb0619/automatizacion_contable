@@ -223,3 +223,68 @@ class RepeatedInventoryAccountTests(SimpleTestCase):
             [Decimal("0.34"), Decimal("0.33"), Decimal("0.33")],
         )
         self.assertIn("AJUSTE_CENTAVO_APLICADO", [warning.code for warning in result.warnings])
+
+
+class SubtotalInventoryToleranceTests(SimpleTestCase):
+    def build(self, inventory_debit: Decimal):
+        document = ConsultaDocumento(
+            company="EMPRESA DEMO",
+            project="PROYECTO DEMO",
+            supplier="PROVEEDOR SINTETICO",
+            supplier_tax_id="",
+            erp_document_number="",
+            supplier_invoice_number="TOL-001",
+            products=(),
+            subtotal=Decimal("100.00"),
+            vat=Decimal("0.00"),
+            total=Decimal("100.00"),
+            distributions=(Distribution("PROYECTO DEMO", "RUBRO-1", "MATERIALES", Decimal("100.00")),),
+            original_accounts=(OriginalAccount("INVENTARIOS", "101000001 - INVENTARIO", inventory_debit, Decimal("0.00"), "", ""),),
+        )
+        result = build_reclassification(
+            document,
+            [RubroAccount(document.company, document.project, "RUBRO-1", "PRESUPUESTO-1")],
+            [],
+            [CategoryGeneralAccount(document.company, document.project, "MATERIALES", "101000001")],
+        )
+        return document, result
+
+    def test_exact_subtotal_match_is_valid_without_tolerance_warning(self) -> None:
+        _, result = self.build(Decimal("100.00"))
+
+        self.assertTrue(result.is_valid)
+        self.assertNotIn("TOLERANCIA_REDONDEO_SUBTOTAL_INVENTARIO", [warning.code for warning in result.warnings])
+
+    def test_one_cent_difference_is_accepted_with_warning(self) -> None:
+        _, result = self.build(Decimal("99.99"))
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.total_debits, Decimal("99.99"))
+        self.assertEqual(result.total_credits, Decimal("99.99"))
+        self.assertEqual(result.difference, Decimal("0.00"))
+        warning = next(warning for warning in result.warnings if warning.code == "TOLERANCIA_REDONDEO_SUBTOTAL_INVENTARIO")
+        self.assertIn("$0.01", warning.message)
+
+    def test_two_cent_difference_is_accepted_with_warning(self) -> None:
+        _, result = self.build(Decimal("99.98"))
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.difference, Decimal("0.00"))
+        self.assertIn("TOLERANCIA_REDONDEO_SUBTOTAL_INVENTARIO", [warning.code for warning in result.warnings])
+
+    def test_three_cent_difference_remains_blocking(self) -> None:
+        _, result = self.build(Decimal("99.97"))
+
+        self.assertFalse(result.is_valid)
+        self.assertIn("DIFERENCIA_CONTABLE", [error.code for error in result.errors])
+        self.assertNotIn("TOLERANCIA_REDONDEO_SUBTOTAL_INVENTARIO", [warning.code for warning in result.warnings])
+
+    def test_negative_one_cent_difference_is_accepted_using_absolute_value(self) -> None:
+        _, result = self.build(Decimal("100.01"))
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.total_debits, Decimal("100.01"))
+        self.assertEqual(result.total_credits, Decimal("100.01"))
+        self.assertEqual(result.difference, Decimal("0.00"))
+        warning = next(warning for warning in result.warnings if warning.code == "TOLERANCIA_REDONDEO_SUBTOTAL_INVENTARIO")
+        self.assertIn("$0.01", warning.message)
