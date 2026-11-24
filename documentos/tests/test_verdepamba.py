@@ -72,7 +72,7 @@ class VerdepambaReaderTests(SimpleTestCase):
 
 
 class VerdepambaProductEngineTests(SimpleTestCase):
-    def test_blocks_unvalidated_equivalence_without_creating_a_journal(self):
+    def test_catalog_destination_is_usable_without_manual_rhr_validation(self):
         from documentos.services.consulta_documentos import ConsultaDocumento, OriginalAccount, Product
         document = ConsultaDocumento(
             company="VERDEPAMBA S.A.S.", project="", supplier="PROVEEDOR FICTICIO", supplier_tax_id="", erp_document_number="ERP-1", supplier_invoice_number="F-1",
@@ -81,9 +81,8 @@ class VerdepambaProductEngineTests(SimpleTestCase):
             original_accounts=(OriginalAccount("10103 - INVENTARIOS", "1010312 - INVENTARIO", Decimal("10.00"), Decimal("0"), "", ""),),
         )
         result = build_product_reclassification(document, [ProductAccount("C20135", "CCU2", "10103", "1010312", False)])
-        self.assertFalse(result.is_valid)
-        self.assertEqual(result.entries, ())
-        self.assertEqual(result.errors[0].code, "EQUIVALENCIA_PENDIENTE_VALIDACION")
+        self.assertTrue(result.is_valid)
+        self.assertEqual([entry.debit_credit for entry in result.entries], ["1", "2"])
 
     def test_one_debit_per_product_and_one_inventory_credit(self):
         from documentos.services.consulta_documentos import ConsultaDocumento, OriginalAccount, Product
@@ -171,27 +170,17 @@ class VerdepambaScopeTests(TestCase):
             self.skipTest("Archivos locales VERDEPAMBA no disponibles.")
         company = Empresa.objects.create(nombre="VERDEPAMBA S.A.S.", codigo="VERDEPAMBA-MENSUAL")
         project = Proyecto.objects.create(empresa=company, codigo="MENSUAL", nombre="Mensual", modalidad_reclasificacion="PRODUCTOS", permite_consulta_sin_proyecto=True)
-        review = revisar_equivalencias_rhr(paths[0], paths[2], paths[1])
-        for item in review:
-            MapeoProductoCuenta.objects.create(
-                proyecto=project, codigo_producto=item.producto, cuenta_destino=item.destino_catalogo,
-                categoria_contable=item.categoria_contable if item.confirmada else "",
-                cuenta_inventario_origen="1010312" if item.confirmada else "", validada=item.confirmada,
-            )
-            if item.confirmada:
-                MapeoCategoriaCuenta.objects.get_or_create(
-                    proyecto=project, categoria=item.categoria_contable, cuenta_general_original="1010312",
-                    defaults={"descripcion": "Prueba RHR", "activo": True},
-                )
+        aplicar_previsualizacion(previsualizar_catalogo(project, "equivalencias", paths[2]).as_session())
         result = process_temporary_files(project, [paths[0]], cleanup=False)
         document = project.lotes.get(pk=result.lote_id).documentos.get()
-        self.assertEqual(document.estado, "ERROR")
-        self.assertEqual(sum(message["code"] == "EQUIVALENCIA_PENDIENTE_VALIDACION" for message in document.mensajes), 4)
-        self.assertEqual(document.lineas.filter(tipo_movimiento="1").count(), 138)
+        self.assertEqual(document.estado, "VALIDO")
+        self.assertEqual(document.lineas.filter(tipo_movimiento="1").count(), 142)
         self.assertEqual(document.lineas.filter(tipo_movimiento="2").count(), 1)
+        self.assertEqual(document.total_debito, Decimal("86733.28"))
+        self.assertEqual(document.total_credito, Decimal("86733.28"))
         self.assertEqual(document.diferencia, Decimal("0.00"))
         preview = get_batch_preview(document.lote_id)
-        self.assertTrue(preview["documentos"][0]["puede_descargar_preliminar"])
+        self.assertTrue(preview["documentos"][0]["puede_exportar"])
 
     def test_pending_equivalences_allow_balanced_preliminary_and_observations(self):
         paths = [DOWNLOADS / name for name in ("fc rhr.xlsx", "reclasificacion rhr.xlsx", "PARA RECLASIFICACION VERDEPAMBA.xlsx")]
@@ -203,6 +192,7 @@ class VerdepambaScopeTests(TestCase):
             MapeoProductoCuenta.objects.create(proyecto=project, codigo_producto=item.producto, cuenta_destino=item.destino_catalogo, categoria_contable=item.categoria_contable if item.confirmada else "", cuenta_inventario_origen="1010312" if item.confirmada else "", validada=item.confirmada)
             if item.confirmada:
                 MapeoCategoriaCuenta.objects.get_or_create(proyecto=project, categoria=item.categoria_contable, cuenta_general_original="1010312")
+        MapeoProductoCuenta.objects.filter(proyecto=project, codigo_producto="C20135").update(cuenta_destino="")
         processed = process_temporary_files(project, [paths[0]], cleanup=False)
         document = project.lotes.get(pk=processed.lote_id).documentos.get()
         preliminary = export_preliminary_batch(document.lote_id)
@@ -210,7 +200,7 @@ class VerdepambaScopeTests(TestCase):
         journal = xlrd.open_workbook(file_contents=preliminary.content).sheet_by_name("DIARIO_CONT")
         report = xlrd.open_workbook(file_contents=observations.content).sheet_by_name("OBSERVACIONES")
         self.assertEqual(journal.nrows, document.lineas.count() + 1)
-        self.assertEqual(report.nrows, 5)
+        self.assertEqual(report.nrows, 2)
         self.assertIn("preliminar", preliminary.filename)
         document.refresh_from_db()
         self.assertEqual(document.estado, "ERROR")
@@ -221,21 +211,9 @@ class VerdepambaScopeTests(TestCase):
             self.skipTest("Archivos locales VERDEPAMBA no disponibles.")
         company = Empresa.objects.create(nombre="VERDEPAMBA S.A.S.", codigo="VERDEPAMBA-COMPLETE")
         project = Proyecto.objects.create(empresa=company, codigo="COMPLETE", nombre="Complete", modalidad_reclasificacion="PRODUCTOS", permite_consulta_sin_proyecto=True)
-        review = revisar_equivalencias_rhr(paths[0], paths[2], paths[1])
-        for item in review:
-            MapeoProductoCuenta.objects.create(proyecto=project, codigo_producto=item.producto, cuenta_destino=item.destino_catalogo, categoria_contable=item.categoria_contable if item.confirmada else "", cuenta_inventario_origen="1010312" if item.confirmada else "", validada=item.confirmada)
-            if item.confirmada:
-                MapeoCategoriaCuenta.objects.get_or_create(proyecto=project, categoria=item.categoria_contable, cuenta_general_original="1010312")
+        aplicar_previsualizacion(previsualizar_catalogo(project, "equivalencias", paths[2]).as_session())
         processed = process_temporary_files(project, [paths[0]], cleanup=False)
         document = project.lotes.get(pk=processed.lote_id).documentos.get()
-        conflicts = [item for item in review if not item.confirmada]
-        self.assertEqual(len([item for item in document.mensajes if item.get("revision")]), 4)
-        for item in conflicts:
-            MapeoCategoriaCuenta.objects.get_or_create(proyecto=project, categoria=item.categoria_contable, cuenta_general_original="1010312")
-            document = correct_product_mapping_for_document(
-                document.id, code=item.producto, destination=item.destino_manual,
-                category=item.categoria_contable, inventory_account="1010312", justification="Revisión contable RHR aprobada.",
-            )
         document.refresh_from_db()
         self.assertEqual(document.estado, "VALIDO")
         self.assertEqual(document.lineas.filter(tipo_movimiento="1").count(), 142)

@@ -123,12 +123,13 @@
     </form>
 
     {% if project and project.modalidad_reclasificacion == 'PRODUCTOS' %}
-    <hr>
+    <details>
+    <summary>Herramienta histórica de diagnóstico RHR (opcional)</summary>
     <form method="post" enctype="multipart/form-data" class="catalog-form catalog-upload-form">
         {% csrf_token %}<input type="hidden" name="accion" value="previsualizar_rhr">
         {{ rhr_form.non_field_errors }}{{ rhr_form.proyecto.as_hidden }}
-        <p><strong>Completar equivalencias desde diario manual RHR</strong></p>
-        <p class="muted">Solo propone cambios. La confirmación posterior actualiza exclusivamente equivalencias demostradas.</p>
+        <p><strong>Comparar con diario manual RHR</strong></p>
+        <p class="muted">Solo para diagnóstico excepcional. No se requiere para procesar facturas mensuales.</p>
         <div class="catalog-upload-fields">
             <label>Factura PAC {{ rhr_form.factura }}{{ rhr_form.factura.errors }}</label>
             <label>Diario manual RHR {{ rhr_form.diario_manual }}{{ rhr_form.diario_manual.errors }}</label>
@@ -136,6 +137,7 @@
         </div>
         <button class="secondary" type="submit">Previsualizar validación RHR</button>
     </form>
+    </details>
     {% endif %}
 
 </section>

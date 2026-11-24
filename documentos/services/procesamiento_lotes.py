@@ -127,7 +127,6 @@ def process_one_file(lote: LoteCarga, path: Path, file_hash: str) -> DocumentoLo
     if lote.proyecto.modalidad_reclasificacion == Proyecto.ModalidadReclasificacion.PRODUCTOS:
         result = build_product_reclassification(
             document, catalogos_productos_para_proyecto(lote.proyecto),
-            category_accounts=categorias_productos_para_proyecto(lote.proyecto),
         )
     else:
         try:
@@ -185,23 +184,17 @@ def persist_lines(record: DocumentoLote, document: ConsultaDocumento, result: Re
 
 
 def product_revision_messages(proyecto: Proyecto, document: ConsultaDocumento, result: ReclassificationResult) -> list[dict]:
-    product_codes = {"PRODUCTO_SIN_CORRESPONDENCIA", "EQUIVALENCIA_PENDIENTE_VALIDACION", "CATEGORIA_CUENTA_NO_AUTORIZADA", "CUENTA_ORIGEN_NO_ENCONTRADA"}
+    product_codes = {"PRODUCTO_SIN_CORRESPONDENCIA", "DESTINO_SIN_CONFIGURAR"}
     generic = [message("error", issue.code, issue.message) for issue in result.errors if issue.code not in product_codes]
     mappings = {item.codigo_producto: item for item in MapeoProductoCuenta.objects.filter(proyecto=proyecto)}
-    allowed = {(item.categoria, item.cuenta_general_original) for item in MapeoCategoriaCuenta.objects.filter(proyecto=proyecto, activo=True)}
-    inventory = {account_code(item.account) for item in document.original_inventory_accounts}
     revisions = []
     for product in document.products:
         mapping = mappings.get(product.code)
         reason = None
         if mapping is None:
             reason = "PRODUCTO_SIN_CORRESPONDENCIA"
-        elif not mapping.validada:
-            reason = "EQUIVALENCIA_PENDIENTE_VALIDACION"
-        elif (mapping.categoria_contable, account_code(mapping.cuenta_inventario_origen)) not in allowed:
-            reason = "CATEGORIA_CUENTA_NO_AUTORIZADA"
-        elif account_code(mapping.cuenta_inventario_origen) not in inventory:
-            reason = "CUENTA_ORIGEN_NO_ENCONTRADA"
+        elif not mapping.cuenta_destino:
+            reason = "DESTINO_SIN_CONFIGURAR"
         if reason:
             detail = {
                 "codigo": product.code, "descripcion": product.description, "importe": f"{product.total:.2f}",
@@ -213,9 +206,7 @@ def product_revision_messages(proyecto: Proyecto, document: ConsultaDocumento, r
             }
             text = {
                 "PRODUCTO_SIN_CORRESPONDENCIA": f"El producto {product.code} no tiene equivalencia configurada.",
-                "EQUIVALENCIA_PENDIENTE_VALIDACION": f"El producto {product.code} tiene una equivalencia pendiente de validación.",
-                "CATEGORIA_CUENTA_NO_AUTORIZADA": f"La categoría del producto {product.code} no autoriza su cuenta de inventario.",
-                "CUENTA_ORIGEN_NO_ENCONTRADA": f"La cuenta configurada para {product.code} no existe en el asiento original.",
+                "DESTINO_SIN_CONFIGURAR": f"El producto {product.code} no tiene código de destino configurado.",
             }[reason]
             revisions.append(message("error", reason, text, revision=detail))
     return generic + revisions
@@ -242,7 +233,7 @@ def reprocess_product_document(document_id: int) -> DocumentoLote:
         if record.estado == DocumentoLote.Estado.EXPORTADO:
             raise ErrorDocumentoEsperado("No se puede reprocesar un documento ya exportado.")
         document = document_from_snapshot(record)
-        result = build_product_reclassification(document, catalogos_productos_para_proyecto(record.lote.proyecto), category_accounts=categorias_productos_para_proyecto(record.lote.proyecto))
+        result = build_product_reclassification(document, catalogos_productos_para_proyecto(record.lote.proyecto))
         record.lineas.all().delete()
         persist_result(record, document, result)
         finalize_batch(record.lote)
@@ -282,13 +273,13 @@ def correct_product_mappings_for_document(document_id: int, corrections: list[di
             category = normalize_category(correction["category"])
             inventory_account = normalize_code(correction["inventory_account"])
             justification = correction["justification"].strip()
-            if not destination or not category or not inventory_account or not justification:
-                raise ErrorDocumentoEsperado("Cada corrección debe incluir destino, categoría, cuenta y justificación.")
+            if not destination or not justification:
+                raise ErrorDocumentoEsperado("Cada corrección debe incluir destino y justificación.")
             if code not in document_codes:
                 raise ErrorDocumentoEsperado("El producto no pertenece a este documento.")
-            if inventory_account not in inventory_codes:
+            if inventory_account and inventory_account not in inventory_codes:
                 raise ErrorDocumentoEsperado("La cuenta de inventario no existe en el asiento original.")
-            if not MapeoCategoriaCuenta.objects.filter(proyecto=project, categoria=category, cuenta_general_original=inventory_account, activo=True).exists():
+            if category and inventory_account and not MapeoCategoriaCuenta.objects.filter(proyecto=project, categoria=category, cuenta_general_original=inventory_account, activo=True).exists():
                 raise ErrorDocumentoEsperado("La cuenta de inventario no está autorizada para la categoría seleccionada.")
             mapping, _ = MapeoProductoCuenta.objects.get_or_create(proyecto=project, codigo_producto=code, defaults={"cuenta_destino": destination, "categoria_contable": category, "cuenta_inventario_origen": inventory_account})
             mapping.cuenta_destino = destination

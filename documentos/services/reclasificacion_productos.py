@@ -31,25 +31,39 @@ def build_product_reclassification(
     confirma que cada producto puede pertenecer a dicha cuenta, sin inferirlo
     por importes ni alterar IVA.
     """
-    mapping_by_product = {item.product_code: item for item in mappings}
+    mapping_by_product = {item.product_code: item for item in mappings if item.destination_account.strip()}
     inventory = _inventory(document)
     errors: list[Issue] = []
     debits: list[JournalEntry] = []
     credits_by_account: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    # PAC no vincula una fila de producto con una fila contable. Solo se puede
+    # asignar su crédito sin inferencias cuando el asiento tiene una única
+    # cuenta de inventario y el total de productos concilia con ella.
+    if len(inventory) != 1:
+        return ReclassificationResult((), (Issue(
+            "CUENTAS_INVENTARIO_AMBIGUAS",
+            "El asiento PAC contiene varias cuentas de inventario y no permite asociarlas inequívocamente a los productos.",
+        ),), (), ZERO, ZERO, ZERO)
+    original_account, inventory_total = next(iter(inventory.items()))
+    product_total = money(sum((item.total for item in document.products), ZERO))
+    if product_total != inventory_total:
+        return ReclassificationResult((), (Issue(
+            "DIFERENCIA_PRODUCTOS_INVENTARIO",
+            "La suma de productos no coincide con el débito original de inventario.",
+        ),), (), ZERO, ZERO, ZERO)
     for product in document.products:
         mapping = mapping_by_product.get(product.code)
         if mapping is None:
             errors.append(Issue("PRODUCTO_SIN_CORRESPONDENCIA", f"El producto {product.code} no tiene correspondencia configurada."))
             continue
-        if not mapping.validated:
-            errors.append(Issue("EQUIVALENCIA_PENDIENTE_VALIDACION", f"El producto {product.code} tiene una equivalencia pendiente de validación contable."))
-            continue
-        original = account_code(mapping.original_inventory_account)
+        # La validación categoría/cuenta se conserva solo cuando hay datos de
+        # configuración explícitos. El catálogo PAC básico no los necesita.
+        original = account_code(mapping.original_inventory_account) or original_account
         category_key = (" ".join(mapping.accounting_category.upper().split()), original)
-        if category_accounts is not None and category_key not in category_accounts:
+        if category_accounts is not None and mapping.accounting_category and mapping.original_inventory_account and category_key not in category_accounts:
             errors.append(Issue("CATEGORIA_CUENTA_NO_AUTORIZADA", f"La categoría {mapping.accounting_category} no tiene autorizada la cuenta de inventario {original}."))
             continue
-        if original not in inventory:
+        if original != original_account:
             errors.append(Issue("CUENTA_ORIGEN_NO_ENCONTRADA", f"El producto {product.code} espera la cuenta original {original}, que no está en el asiento."))
             continue
         debits.append(JournalEntry(
@@ -58,7 +72,7 @@ def build_product_reclassification(
         ))
         # Un diario preliminar solo revierte la porción de inventario que ya
         # tiene una equivalencia validada; no inventa un ajuste para pendientes.
-        credits_by_account[original] += product.total
+        credits_by_account[original_account] += product.total
     total_debits = money(sum((entry.amount for entry in debits), ZERO))
     total_credits = money(sum(credits_by_account.values(), ZERO))
     difference = money(total_debits - total_credits)
