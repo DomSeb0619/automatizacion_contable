@@ -59,6 +59,43 @@ def export_batch(lote_id: int) -> ArchivoExportado:
         return ArchivoExportado(content=content, filename=f"diario_reclasificacion_lote_{lote.id}.xls")
 
 
+def export_preliminary_batch(lote_id: int) -> ArchivoExportado:
+    """Genera un diario parcial de PRODUCTOS sin cambiar estados ni exportar a PAC."""
+    preview = get_batch_preview(lote_id)
+    lote = LoteCarga.objects.get(pk=lote_id)
+    if lote.proyecto.modalidad_reclasificacion != "PRODUCTOS":
+        raise ErrorExportacion("El diario preliminar solo está disponible para proyectos por productos.")
+    ids = {item["id"] for item in preview["documentos"] if item["puede_descargar_preliminar"]}
+    documents = list(DocumentoLote.objects.filter(pk__in=ids).prefetch_related("lineas").order_by("id"))
+    if not documents:
+        raise ErrorExportacion("No hay líneas preliminares revisables para descargar.")
+    validate_documents(documents)
+    rows = export_rows(documents)
+    content = build_xls(rows)
+    verify_xls(content, rows)
+    return ArchivoExportado(content=content, filename=f"diario_preliminar_revision_lote_{lote.id}.xls")
+
+
+def export_observations_report(lote_id: int) -> ArchivoExportado:
+    preview = get_batch_preview(lote_id)
+    rows = [
+        (revision.get("codigo", ""), revision.get("descripcion", ""), Decimal(revision.get("importe", "0.00")),
+         revision.get("destino_actual", ""), revision.get("destino_sugerido", ""), revision.get("message", ""))
+        for document in preview["documentos"] for revision in document["revisiones_producto"]
+    ]
+    if not rows:
+        raise ErrorExportacion("El lote no contiene observaciones de productos.")
+    output = BytesIO()
+    workbook = xlwt.Workbook(encoding="utf-8")
+    sheet = workbook.add_sheet("OBSERVACIONES")
+    headers = ["Código PAC", "Descripción", "Importe", "Destino actual", "Destino sugerido", "Motivo"]
+    for index, header in enumerate(headers): sheet.write(0, index, header, xlwt.easyxf("font: bold on"))
+    for row_index, row in enumerate(rows, start=1):
+        for column, value in enumerate(row): sheet.write(row_index, column, value, xlwt.easyxf("", num_format_str="0.00") if column == 2 else xlwt.easyxf(""))
+    workbook.save(output)
+    return ArchivoExportado(content=output.getvalue(), filename=f"observaciones_reclasificacion_lote_{lote_id}.xls")
+
+
 def select_documents(lote: LoteCarga, documents: list[DocumentoLote], preview: dict) -> list[DocumentoLote]:
     if lote.estado == LoteCarga.Estado.EXPORTADO:
         selected = [document for document in documents if document.estado == DocumentoLote.Estado.EXPORTADO]

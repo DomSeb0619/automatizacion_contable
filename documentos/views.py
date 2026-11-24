@@ -10,13 +10,13 @@ from django.shortcuts import redirect, render
 from django.utils.text import get_valid_filename
 from django.views.decorators.http import require_POST
 
-from documentos.forms import CatalogUploadForm, CategoriaManualForm, CargaLoteForm, ConfiguracionInstitucionalForm, EmpresaForm, ProductoManualForm, ProyectoForm, RubroManualForm
-from documentos.models import ConfiguracionInstitucional, Empresa, LoteCarga, MapeoCategoriaCuenta, MapeoProductoIVA, MapeoRubroCuenta, Proyecto
-from documentos.services.configuracion_catalogos import CatalogoInvalido, ConfirmacionInvalida, VistaCatalogo, aplicar_previsualizacion, previsualizar_catalogo
-from documentos.services.exportacion_erp import ErrorExportacion, export_batch
+from documentos.forms import CatalogUploadForm, CategoriaManualForm, CargaLoteForm, ConfiguracionInstitucionalForm, CorreccionProductoDocumentoForm, EmpresaForm, ProductoCuentaManualForm, ProductoManualForm, ProyectoForm, RubroManualForm, ValidacionRhrForm
+from documentos.models import ConfiguracionInstitucional, DocumentoLote, Empresa, LoteCarga, MapeoCategoriaCuenta, MapeoProductoCuenta, MapeoProductoIVA, MapeoRubroCuenta, Proyecto
+from documentos.services.configuracion_catalogos import CatalogoInvalido, ConfirmacionInvalida, VistaCatalogo, aplicar_previsualizacion, previsualizar_catalogo, previsualizar_validacion_rhr
+from documentos.services.exportacion_erp import ErrorExportacion, export_batch, export_observations_report, export_preliminary_batch
 from documentos.services.historial_lotes import get_batch_history
 from documentos.services.previsualizacion_lotes import LoteNoEncontrado, get_batch_preview
-from documentos.services.procesamiento_lotes import process_temporary_files
+from documentos.services.procesamiento_lotes import ErrorDocumentoEsperado, correct_product_mapping_for_document, correct_product_mappings_for_document, process_temporary_files, reprocess_product_document
 from documentos.services.configuracion_proyecto import actualizacion_catalogo, resumir_configuracion
 
 
@@ -38,7 +38,8 @@ def cargar_lote(request):
                 return redirect('documentos:previsualizar_lote', lote_id=result.lote_id)
     else:
         form = CargaLoteForm()
-    return render(request, 'documentos/carga_lote.html', {'form': form})
+    project_modes = {str(item.pk): item.modalidad_reclasificacion for item in form.fields['proyecto'].queryset}
+    return render(request, 'documentos/carga_lote.html', {'form': form, 'project_modes': project_modes})
 
 
 def previsualizar_lote(request, lote_id: int):
@@ -47,6 +48,55 @@ def previsualizar_lote(request, lote_id: int):
     except LoteNoEncontrado as error:
         raise Http404(str(error)) from error
     return render(request, 'documentos/previsualizacion_lote.html', {'preview': preview})
+
+
+@require_POST
+def corregir_producto_documento(request, document_id: int):
+    form = CorreccionProductoDocumentoForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, 'La corrección no contiene todos los datos requeridos.')
+        return redirect('documentos:previsualizar_lote', lote_id=request.POST.get('lote_id'))
+    try:
+        record = correct_product_mapping_for_document(
+            document_id, code=form.cleaned_data['codigo_producto'], destination=form.cleaned_data['cuenta_destino'],
+            category=form.cleaned_data['categoria_contable'], inventory_account=form.cleaned_data['cuenta_inventario_origen'],
+            justification=form.cleaned_data['justificacion'],
+        )
+    except (ErrorDocumentoEsperado, DocumentoLote.DoesNotExist) as error:
+        messages.error(request, str(error))
+        return redirect('documentos:previsualizar_lote', lote_id=request.POST.get('lote_id'))
+    messages.success(request, f'Equivalencia {form.cleaned_data["codigo_producto"]} corregida y documento reprocesado.')
+    return redirect('documentos:previsualizar_lote', lote_id=record.lote_id)
+
+
+@require_POST
+def corregir_productos_documento(request, document_id: int):
+    corrections = []
+    for code in request.POST.getlist('seleccionado'):
+        corrections.append({
+            'code': code, 'destination': request.POST.get(f'destino_{code}', ''),
+            'category': request.POST.get(f'categoria_{code}', ''),
+            'inventory_account': request.POST.get(f'inventario_{code}', ''),
+            'justification': request.POST.get('justificacion', ''),
+        })
+    try:
+        record = correct_product_mappings_for_document(document_id, corrections)
+    except (ErrorDocumentoEsperado, DocumentoLote.DoesNotExist) as error:
+        messages.error(request, str(error))
+        return redirect('documentos:previsualizar_lote', lote_id=request.POST.get('lote_id'))
+    messages.success(request, f'{len(corrections)} equivalencia(s) guardadas y documento reprocesado.')
+    return redirect('documentos:previsualizar_lote', lote_id=record.lote_id)
+
+
+@require_POST
+def reprocesar_documento(request, document_id: int):
+    try:
+        record = reprocess_product_document(document_id)
+    except (ErrorDocumentoEsperado, DocumentoLote.DoesNotExist) as error:
+        messages.error(request, str(error))
+        return redirect('documentos:previsualizar_lote', lote_id=request.POST.get('lote_id'))
+    messages.success(request, 'Documento reprocesado con las equivalencias vigentes.')
+    return redirect('documentos:previsualizar_lote', lote_id=record.lote_id)
 
 
 def historial_lotes(request):
@@ -91,6 +141,30 @@ def exportar_lote(request, lote_id: int):
     return response
 
 
+@require_POST
+def exportar_preliminar_lote(request, lote_id: int):
+    try:
+        exported = export_preliminary_batch(lote_id)
+    except ErrorExportacion as error:
+        messages.error(request, str(error))
+        return redirect('documentos:previsualizar_lote', lote_id=lote_id)
+    response = HttpResponse(exported.content, content_type=exported.content_type)
+    response['Content-Disposition'] = f'attachment; filename="{exported.filename}"'
+    return response
+
+
+@require_POST
+def exportar_observaciones_lote(request, lote_id: int):
+    try:
+        exported = export_observations_report(lote_id)
+    except ErrorExportacion as error:
+        messages.error(request, str(error))
+        return redirect('documentos:previsualizar_lote', lote_id=lote_id)
+    response = HttpResponse(exported.content, content_type=exported.content_type)
+    response['Content-Disposition'] = f'attachment; filename="{exported.filename}"'
+    return response
+
+
 def configurar_catalogos(request):
     if request.method == 'POST':
         action = request.POST.get('accion')
@@ -106,7 +180,19 @@ def configurar_catalogos(request):
                     request.session['catalogo_preview'] = preview.as_session()
                     return render_catalogos(request, form.cleaned_data['proyecto'], preview=preview, upload_form=form)
             return render_catalogos(request, upload_form=form)
-        if action in {'guardar_producto', 'guardar_rubro', 'guardar_categoria'}:
+        if action == 'previsualizar_rhr':
+            request.session.pop('catalogo_preview', None)
+            rhr_form = ValidacionRhrForm(request.POST, request.FILES)
+            if rhr_form.is_valid():
+                try:
+                    preview = preview_uploaded_rhr(rhr_form.cleaned_data['proyecto'], rhr_form)
+                except CatalogoInvalido as error:
+                    rhr_form.add_error(None, str(error))
+                else:
+                    request.session['catalogo_preview'] = preview.as_session()
+                    return render_catalogos(request, rhr_form.cleaned_data['proyecto'], preview=preview, rhr_form=rhr_form)
+            return render_catalogos(request, rhr_form.cleaned_data.get('proyecto'), rhr_form=rhr_form)
+        if action in {'guardar_producto', 'guardar_rubro', 'guardar_categoria', 'guardar_producto_cuenta'}:
             return guardar_catalogo_manual(request, action)
     project = selected_project(request)
     return render_catalogos(request, project)
@@ -169,6 +255,7 @@ def guardar_catalogo_manual(request, action: str):
         'guardar_producto': (ProductoManualForm, 'producto'),
         'guardar_rubro': (RubroManualForm, 'rubro'),
         'guardar_categoria': (CategoriaManualForm, 'categoria'),
+        'guardar_producto_cuenta': (ProductoCuentaManualForm, 'producto_cuenta'),
     }
     form_class, kind = forms_by_action[action]
     form = form_class(request.POST)
@@ -183,7 +270,7 @@ def guardar_catalogo_manual(request, action: str):
     return redirect(f"{redirect('documentos:configurar_catalogos').url}?proyecto={form.cleaned_data['proyecto'].id}")
 
 
-def render_catalogos(request, project=None, *, preview: VistaCatalogo | None = None, upload_form=None, manual_forms=None):
+def render_catalogos(request, project=None, *, preview: VistaCatalogo | None = None, upload_form=None, rhr_form=None, manual_forms=None):
     project = project or selected_project(request)
     manual_forms = manual_forms or {}
     query = request.GET.get('q', '').strip()
@@ -205,12 +292,15 @@ def render_catalogos(request, project=None, *, preview: VistaCatalogo | None = N
         'query': query,
         'preview': preview or session_preview(request.session.get('catalogo_preview')),
         'upload_form': upload_form or CatalogUploadForm(initial={'proyecto': project.id} if project else None),
+        'rhr_form': rhr_form or ValidacionRhrForm(initial={'proyecto': project.id} if project else None),
         'producto_form': manual_forms.get('producto') or ProductoManualForm(initial={'proyecto': project.id} if project else None),
         'rubro_form': manual_forms.get('rubro') or RubroManualForm(initial={'proyecto': project.id} if project else None),
         'categoria_form': category_form,
+        'producto_cuenta_form': manual_forms.get('producto_cuenta') or ProductoCuentaManualForm(initial={'proyecto': project.id} if project else None),
         'products': [],
         'rubros': [],
         'categories': [],
+        'product_accounts': [],
     }
     if project:
         product_filter = Q(proyecto=project)
@@ -223,9 +313,14 @@ def render_catalogos(request, project=None, *, preview: VistaCatalogo | None = N
         context['products'] = MapeoProductoIVA.objects.filter(product_filter).order_by('codigo_producto')[:100]
         context['rubros'] = MapeoRubroCuenta.objects.filter(rubro_filter).order_by('codigo_rubro')[:100]
         context['categories'] = MapeoCategoriaCuenta.objects.filter(category_filter).order_by('categoria')[:100]
+        account_filter = Q(proyecto=project)
+        if query:
+            account_filter &= Q(codigo_producto__icontains=query) | Q(cuenta_destino__icontains=query) | Q(categoria_contable__icontains=query)
+        context['product_accounts'] = MapeoProductoCuenta.objects.filter(account_filter).order_by('codigo_producto')[:100]
         context['resumen_configuracion'] = resumir_configuracion(project)
         context['actualizacion_productos'] = actualizacion_catalogo(project, 'PRODUCTOS')
         context['actualizacion_rubros'] = actualizacion_catalogo(project, 'RUBROS')
+        context['actualizacion_equivalencias'] = actualizacion_catalogo(project, 'EQUIVALENCIAS')
     return render(request, 'documentos/configurar_catalogos.html', context)
 
 
@@ -246,12 +341,24 @@ def preview_uploaded_catalog(project: Proyecto, kind: str, uploaded) -> VistaCat
         return previsualizar_catalogo(project, kind, path, nombre_archivo=Path(uploaded.name).name)
 
 
+def preview_uploaded_rhr(project: Proyecto, form: ValidacionRhrForm) -> VistaCatalogo:
+    settings.UPLOAD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    uploads = [form.cleaned_data['factura'], form.cleaned_data['diario_manual'], form.cleaned_data['catalogo']]
+    with TemporaryDirectory(dir=settings.UPLOAD_TEMP_DIR) as temporary_directory:
+        paths = write_temporary_uploads(Path(temporary_directory), uploads)
+        return previsualizar_validacion_rhr(
+            project, paths[0], paths[1], paths[2],
+            nombres={"factura": Path(uploads[0].name).name, "diario_manual": Path(uploads[1].name).name, "catalogo": Path(uploads[2].name).name},
+        )
+
+
 def session_preview(payload) -> VistaCatalogo | None:
     if not payload:
         return None
     return VistaCatalogo(
         payload['tipo'], payload['proyecto_id'], payload['filas'], payload['creados'], payload['actualizados'],
         payload['omitidos'], payload['rechazados'], payload['errores'], payload.get('nombre_archivo', ''),
+        payload.get('duplicados', 0), payload.get('pendientes', 0), payload.get('detalles', {}),
     )
 
 
@@ -274,6 +381,12 @@ def save_manual_catalog(kind: str, data: dict) -> None:
             record.descripcion = data['descripcion']
             record.tipo = data['tipo']
             record.cuenta_contable = data['cuenta_contable']
+        elif kind == 'producto_cuenta':
+            record = manual_record(MapeoProductoCuenta, data.get('registro_id'), proyecto=project)
+            record = record or MapeoProductoCuenta.objects.filter(proyecto=project, codigo_producto=data['codigo_producto']).first()
+            record = record or MapeoProductoCuenta(proyecto=project)
+            for field in ('codigo_producto', 'descripcion_producto', 'cuenta_destino', 'descripcion_destino', 'categoria_contable', 'cuenta_inventario_origen', 'validada', 'justificacion_validacion'):
+                setattr(record, field, data[field])
         else:
             record = manual_record(MapeoCategoriaCuenta, data.get('registro_id'), proyecto=project)
             record = record or MapeoCategoriaCuenta.objects.filter(

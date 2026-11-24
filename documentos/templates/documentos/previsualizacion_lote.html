@@ -46,8 +46,8 @@
             Estado del lote
         </span>
 
-        <strong class="status {{ preview.estado|lower }}">
-            {{ preview.estado }}
+        <strong class="status {% if preview.solo_observaciones %}advertencia{% else %}{{ preview.estado|lower }}{% endif %}">
+            {% if preview.solo_observaciones %}CON OBSERVACIONES{% else %}{{ preview.estado }}{% endif %}
         </strong>
 
     </div>
@@ -76,13 +76,21 @@
         </div>
 
         <div>
-            <span>Errores</span>
+            <span>{% if preview.solo_observaciones %}Con observaciones{% else %}Errores{% endif %}</span>
             <strong>{{ preview.cantidad_con_errores }}</strong>
         </div>
 
         <div>
             <span>Duplicados</span>
             <strong>{{ preview.cantidad_duplicados }}</strong>
+        </div>
+        <div>
+            <span>Productos procesados</span>
+            <strong>{{ preview.productos_procesados }}</strong>
+        </div>
+        <div>
+            <span>Productos pendientes</span>
+            <strong>{{ preview.productos_pendientes }}</strong>
         </div>
 
     </div>
@@ -103,6 +111,14 @@
         <div>
             <span>Diferencia</span>
             <strong>${{ preview.diferencia }}</strong>
+        </div>
+        <div>
+            <span>Total reclasificado</span>
+            <strong>${{ preview.total_reclasificado }}</strong>
+        </div>
+        <div>
+            <span>Pendiente de reclasificar</span>
+            <strong>${{ preview.total_pendiente }}</strong>
         </div>
 
     </div>
@@ -164,7 +180,7 @@
             </strong>
 
             <span>
-                Corrige los documentos con error y procesa un nuevo lote.
+                Corrige las observaciones y reprocesa el documento desde esta pantalla.
             </span>
 
         </div>
@@ -179,6 +195,17 @@
 
     </div>
 
+{% endif %}
+
+{% if preview.cantidad_preliminares %}
+<div class="export-bar review-export-bar disabled-export">
+    <div class="review-export-copy">
+        <strong>Diario preliminar pendiente de revisión</strong>
+        <span>Contiene únicamente productos con equivalencia validada. No está listo para importar en PAC.</span>
+    </div>
+    <form method="post" action="{% url 'documentos:exportar_preliminar_lote' preview.id %}">{% csrf_token %}<button class="secondary" type="submit">Descargar diario preliminar</button></form>
+    <form method="post" action="{% url 'documentos:exportar_observaciones_lote' preview.id %}">{% csrf_token %}<button class="secondary" type="submit">Descargar observaciones</button></form>
+</div>
 {% endif %}
 
 
@@ -223,13 +250,15 @@
 
                 <div class="status-block review-document-status">
 
-                    <strong class="status {{ document.estado|lower }}">
-                        {{ document.estado }}
+                    <strong class="status {% if document.puede_descargar_preliminar %}advertencia{% else %}{{ document.estado|lower }}{% endif %}">
+                        {% if document.puede_descargar_preliminar %}CON OBSERVACIONES{% else %}{{ document.estado }}{% endif %}
                     </strong>
 
                     <span>
                         {% if document.estado == 'EXPORTADO' %}
                             Incluida en el diario exportado
+                        {% elif document.puede_descargar_preliminar %}
+                            Diario preliminar disponible para revisión
                         {% elif document.estado == 'ERROR' or document.estado == 'DUPLICADO' %}
                             Excluida de la exportación
                         {% elif document.puede_exportar %}
@@ -314,6 +343,8 @@
 
             {% for error in document.errores %}
 
+                {% if not error.revision %}
+
                 <div class="notice error review-error">
 
                     <b>
@@ -334,7 +365,43 @@
 
                 </div>
 
+                {% endif %}
+
             {% endfor %}
+
+            {% if document.revisiones_producto %}
+                <div class="table-wrap review-lines-table">
+                    <table><thead><tr><th>Código PAC</th><th>Descripción</th><th>Importe</th><th>Destino actual</th><th>Motivo</th></tr></thead><tbody>
+                    {% for revision in document.revisiones_producto %}<tr>
+                        <td><strong>{{ revision.codigo }}</strong></td><td>{{ revision.descripcion|default:'Sin descripción' }}</td><td>${{ revision.importe }}</td>
+                        <td>{% firstof revision.destino_sugerido revision.destino_actual '—' %}</td><td>{{ revision.message }}</td>
+                    </tr>{% endfor %}</tbody></table>
+                </div>
+                <details class="notice warning review-warning">
+                    <summary>Corregir equivalencias</summary>
+                    <form method="post" action="{% url 'documentos:corregir_productos_documento' document.id %}" class="catalog-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="lote_id" value="{{ preview.id }}">
+                        <div class="table-wrap"><table><thead><tr><th>Aplicar</th><th>Código / descripción</th><th>Importe</th><th>Destino</th><th>Categoría</th><th>Inventario</th><th>Motivo</th></tr></thead><tbody>
+                        {% for revision in document.revisiones_producto %}<tr>
+                            <td><input type="checkbox" name="seleccionado" value="{{ revision.codigo }}"></td>
+                            <td><strong>{{ revision.codigo }}</strong><br>{{ revision.descripcion|default:'Sin descripción' }}</td><td>${{ revision.importe }}</td>
+                            <td><input name="destino_{{ revision.codigo }}" value="{{ revision.destino_sugerido|default:revision.destino_actual }}"></td>
+                            <td><input list="categorias-{{ document.id }}" name="categoria_{{ revision.codigo }}" value="{{ revision.categoria }}"></td>
+                            <td><input list="inventarios-{{ document.id }}" name="inventario_{{ revision.codigo }}" value="{{ revision.cuenta_inventario }}"></td>
+                            <td>{{ revision.message }}{% if revision.referencia_manual %}<br><small>{{ revision.referencia_manual }}</small>{% endif %}</td>
+                        </tr>{% endfor %}</tbody></table></div>
+                        <datalist id="categorias-{{ document.id }}">{% for option in preview.opciones_categoria_cuenta %}<option value="{{ option.categoria }}">{% endfor %}</datalist>
+                        <datalist id="inventarios-{{ document.id }}">{% for option in preview.opciones_categoria_cuenta %}<option value="{{ option.cuenta_general_original }}">{% endfor %}</datalist>
+                        <label>Justificación para las correcciones seleccionadas <textarea name="justificacion" rows="2" required></textarea></label>
+                        <button class="secondary" type="submit">Guardar seleccionadas y reprocesar</button>
+                    </form>
+                </details>
+                <form method="post" action="{% url 'documentos:reprocesar_documento' document.id %}">
+                    {% csrf_token %}<input type="hidden" name="lote_id" value="{{ preview.id }}">
+                    <button class="secondary" type="submit">Reprocesar con equivalencias actuales</button>
+                </form>
+            {% endif %}
 
 
             <!-- MOVIMIENTOS -->

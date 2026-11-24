@@ -13,5 +13,10 @@ urlpatterns = [
     path('catalogos/confirmar/', views.confirmar_catalogo, name='confirmar_catalogo'),
     path('historial/', views.historial_lotes, name='historial_lotes'),
     path('lotes/<int:lote_id>/', views.previsualizar_lote, name='previsualizar_lote'),
+    path('documentos/<int:document_id>/corregir-producto/', views.corregir_producto_documento, name='corregir_producto_documento'),
+    path('documentos/<int:document_id>/corregir-productos/', views.corregir_productos_documento, name='corregir_productos_documento'),
+    path('documentos/<int:document_id>/reprocesar/', views.reprocesar_documento, name='reprocesar_documento'),
     path('lotes/<int:lote_id>/exportar/', views.exportar_lote, name='exportar_lote'),
+    path('lotes/<int:lote_id>/exportar-preliminar/', views.exportar_preliminar_lote, name='exportar_preliminar_lote'),
+    path('lotes/<int:lote_id>/exportar-observaciones/', views.exportar_observaciones_lote, name='exportar_observaciones_lote'),
 ]

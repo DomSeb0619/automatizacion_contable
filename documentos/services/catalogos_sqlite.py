@@ -12,6 +12,7 @@ from documentos.models import (
     Empresa,
     MapeoCategoriaCuenta,
     MapeoProductoIVA,
+    MapeoProductoCuenta,
     MapeoRubroCuenta,
     Proyecto,
     normalize_code,
@@ -19,6 +20,7 @@ from documentos.models import (
 )
 from documentos.services.consulta_documentos import ConsultaDocumento
 from documentos.services.reclasificacion import CategoryGeneralAccount, ProductVat, RubroAccount
+from documentos.services.reclasificacion_productos import ProductAccount
 
 
 class CatalogoNoResuelto(ValueError):
@@ -97,6 +99,28 @@ def resolve_producto_iva(proyecto: Proyecto, codigo_producto: str) -> MapeoProdu
         )
     except MapeoProductoIVA.DoesNotExist as error:
         raise CatalogoNoResuelto(f"No existe IVA para el producto {codigo_producto}.") from error
+
+
+def catalogos_productos_para_proyecto(proyecto: Proyecto) -> list[ProductAccount]:
+    """Adaptador ORM → motor por productos; no mezcla catálogos entre proyectos."""
+    return [
+        ProductAccount(
+            product_code=item.codigo_producto,
+            destination_account=item.cuenta_destino,
+            accounting_category=item.categoria_contable,
+            original_inventory_account=item.cuenta_inventario_origen,
+            validated=item.validada,
+        )
+        for item in MapeoProductoCuenta.objects.filter(proyecto=proyecto, activo=True)
+    ]
+
+
+def categorias_productos_para_proyecto(proyecto: Proyecto) -> set[tuple[str, str]]:
+    """Pares categoría/cuenta general autorizados solo para ese proyecto."""
+    return {
+        (mapping.categoria, mapping.cuenta_general_original)
+        for mapping in MapeoCategoriaCuenta.objects.filter(proyecto=proyecto, activo=True)
+    }
 
 
 def resolve_categoria_cuenta(proyecto: Proyecto, categoria: str) -> MapeoCategoriaCuenta:

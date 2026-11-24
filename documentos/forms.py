@@ -21,7 +21,7 @@ class MultipleFileField(forms.FileField):
 
 class CargaLoteForm(forms.Form):
     proyecto = forms.ModelChoiceField(queryset=Proyecto.objects.none(), empty_label='Selecciona empresa y proyecto')
-    archivos = MultipleFileField(required=True, widget=MultipleFileInput(attrs={'accept': '.xls'}))
+    archivos = MultipleFileField(required=True, widget=MultipleFileInput(attrs={'accept': '.xls,.xlsx'}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -33,16 +33,27 @@ class CargaLoteForm(forms.Form):
             raise forms.ValidationError('Selecciona al menos un archivo .xls.')
         if len(files) > settings.MAX_UPLOAD_FILES:
             raise forms.ValidationError(f'Puedes cargar un máximo de {settings.MAX_UPLOAD_FILES} archivos por lote.')
+        project = self.cleaned_data.get('proyecto')
+        if project is None:
+            return files
         for uploaded in files:
             name = Path(uploaded.name).name
-            if Path(name).suffix.lower() != '.xls':
+            suffix = Path(name).suffix.lower()
+            product_mode = project.modalidad_reclasificacion == Proyecto.ModalidadReclasificacion.PRODUCTOS
+            if product_mode and suffix not in {'.xls', '.xlsx'}:
+                raise forms.ValidationError(f'{name}: se permiten archivos .xls o .xlsx.')
+            if not product_mode and suffix != '.xls':
                 raise forms.ValidationError(f'{name}: solo se permiten archivos .xls.')
             if uploaded.size > settings.MAX_UPLOAD_FILE_SIZE:
                 raise forms.ValidationError(f'{name}: supera el máximo de 5 MB por archivo.')
             signature = uploaded.read(len(OLE2_MAGIC))
             uploaded.seek(0)
-            if signature != OLE2_MAGIC:
+            is_ole2 = signature == OLE2_MAGIC
+            is_xlsx = signature[:4] == b'PK\x03\x04'
+            if not product_mode and not is_ole2:
                 raise forms.ValidationError(f'{name}: no es un archivo .xls OLE2 válido.')
+            if product_mode and not (is_ole2 or is_xlsx):
+                raise forms.ValidationError(f'{name}: no es un archivo PAC .xls o .xlsx válido.')
         return files
 
 
@@ -55,7 +66,7 @@ class ProyectoActivoForm(forms.Form):
 
 
 class CatalogUploadForm(ProyectoActivoForm):
-    TIPO_CHOICES = [('productos', 'Maestro producto-IVA'), ('rubros', 'Catalogo rubro-cuenta')]
+    TIPO_CHOICES = [('productos', 'Maestro producto-IVA'), ('rubros', 'Catalogo rubro-cuenta'), ('equivalencias', 'Equivalencias de productos')]
 
     tipo = forms.ChoiceField(choices=TIPO_CHOICES)
     archivo = forms.FileField(widget=forms.ClearableFileInput(attrs={'accept': '.xlsx'}))
@@ -73,6 +84,33 @@ class CatalogUploadForm(ProyectoActivoForm):
         return uploaded
 
 
+class ValidacionRhrForm(ProyectoActivoForm):
+    factura = forms.FileField(widget=forms.ClearableFileInput(attrs={'accept': '.xlsx'}))
+    diario_manual = forms.FileField(widget=forms.ClearableFileInput(attrs={'accept': '.xlsx'}))
+    catalogo = forms.FileField(widget=forms.ClearableFileInput(attrs={'accept': '.xlsx'}))
+
+    def clean(self):
+        cleaned = super().clean()
+        project = cleaned.get('proyecto')
+        if project and project.modalidad_reclasificacion != Proyecto.ModalidadReclasificacion.PRODUCTOS:
+            raise forms.ValidationError('La validación RHR solo está disponible para proyectos con modalidad PRODUCTOS.')
+        for name in ('factura', 'diario_manual', 'catalogo'):
+            uploaded = cleaned.get(name)
+            if not uploaded:
+                continue
+            if Path(uploaded.name).suffix.lower() != '.xlsx':
+                self.add_error(name, 'Selecciona un archivo .xlsx.')
+                continue
+            if uploaded.size > settings.MAX_UPLOAD_FILE_SIZE:
+                self.add_error(name, 'El archivo supera el máximo de 5 MB.')
+                continue
+            signature = uploaded.read(4)
+            uploaded.seek(0)
+            if signature != b'PK\x03\x04':
+                self.add_error(name, 'El archivo no es un .xlsx válido.')
+        return cleaned
+
+
 class EmpresaForm(forms.ModelForm):
     class Meta:
         model = Empresa
@@ -82,9 +120,10 @@ class EmpresaForm(forms.ModelForm):
 class ProyectoForm(forms.ModelForm):
     class Meta:
         model = Proyecto
-        fields = ['empresa', 'codigo', 'codigo_consulta_documentos', 'nombre', 'activo']
+        fields = ['empresa', 'codigo', 'codigo_consulta_documentos', 'nombre', 'modalidad_reclasificacion', 'permite_consulta_sin_proyecto', 'activo']
         help_texts = {
             'codigo_consulta_documentos': 'Opcional. Úsalo cuando Consulta de Documentos entrega un identificador distinto al código presupuestario.',
+            'permite_consulta_sin_proyecto': 'Solo para PAC: exige que este sea el único proyecto PAC habilitado de la empresa.',
         }
 
     def __init__(self, *args, **kwargs):
@@ -142,3 +181,24 @@ class CategoriaManualForm(ProyectoActivoForm):
     cuenta_general_original = forms.CharField(max_length=100)
     descripcion = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
     activo = forms.BooleanField(required=False, initial=True)
+
+
+class ProductoCuentaManualForm(ProyectoActivoForm):
+    registro_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
+    codigo_producto = forms.CharField(max_length=100)
+    descripcion_producto = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
+    cuenta_destino = forms.CharField(max_length=100)
+    descripcion_destino = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
+    categoria_contable = forms.CharField(max_length=150)
+    cuenta_inventario_origen = forms.CharField(max_length=100)
+    validada = forms.BooleanField(required=False)
+    justificacion_validacion = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
+    activo = forms.BooleanField(required=False, initial=True)
+
+
+class CorreccionProductoDocumentoForm(forms.Form):
+    codigo_producto = forms.CharField(max_length=100, widget=forms.HiddenInput)
+    cuenta_destino = forms.CharField(max_length=100, label="Destino corto")
+    categoria_contable = forms.CharField(max_length=150, label="Categoría contable")
+    cuenta_inventario_origen = forms.CharField(max_length=100, label="Cuenta de inventario origen")
+    justificacion = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}), label="Justificación de la corrección")

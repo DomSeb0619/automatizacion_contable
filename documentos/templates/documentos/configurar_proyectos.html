@@ -149,6 +149,17 @@
                 {{ proyecto_form.nombre }}
             </label>
 
+            <label>
+                <span>Modalidad de reclasificación</span>
+                {{ proyecto_form.modalidad_reclasificacion }}
+            </label>
+
+            <label class="checkbox project-checkbox">
+                {{ proyecto_form.permite_consulta_sin_proyecto }}
+                <span>Permitir consulta PAC sin proyecto</span>
+                <small>{{ proyecto_form.permite_consulta_sin_proyecto.help_text }}</small>
+            </label>
+
             <label class="checkbox project-checkbox">
                 {{ proyecto_form.activo }}
                 <span>Proyecto activo</span>

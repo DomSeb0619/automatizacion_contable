@@ -45,6 +45,10 @@ class Empresa(TimeStampedModel):
 
 
 class Proyecto(TimeStampedModel):
+    class ModalidadReclasificacion(models.TextChoices):
+        RUBROS = "RUBROS", "Rubros presupuestarios"
+        PRODUCTOS = "PRODUCTOS", "Productos"
+
     empresa = models.ForeignKey(Empresa, on_delete=models.PROTECT, related_name="proyectos")
     codigo = models.CharField(max_length=100)
     codigo_consulta_documentos = models.CharField(
@@ -53,6 +57,15 @@ class Proyecto(TimeStampedModel):
         help_text="Identificador mostrado por Consulta de Documentos; no cambia el código presupuestario.",
     )
     nombre = models.CharField(max_length=255)
+    modalidad_reclasificacion = models.CharField(
+        max_length=12, choices=ModalidadReclasificacion.choices,
+        default=ModalidadReclasificacion.RUBROS,
+        help_text="Define si el proyecto reclasifica por rubros presupuestarios o por productos.",
+    )
+    permite_consulta_sin_proyecto = models.BooleanField(
+        default=False,
+        help_text="Permite archivos PAC sin identificador de proyecto solo si este es el único proyecto habilitado de la empresa.",
+    )
     activo = models.BooleanField(default=True)
 
     class Meta:
@@ -69,6 +82,37 @@ class Proyecto(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.empresa} / {self.codigo}"
+
+
+class MapeoProductoCuenta(TimeStampedModel):
+    """Equivalencia revisable para la modalidad de reclasificación por producto."""
+
+    proyecto = models.ForeignKey(Proyecto, on_delete=models.PROTECT, related_name="mapeos_producto_cuenta")
+    codigo_producto = models.CharField(max_length=100)
+    descripcion_producto = models.TextField(blank=True)
+    cuenta_destino = models.CharField(max_length=100)
+    descripcion_destino = models.TextField(blank=True)
+    categoria_contable = models.CharField(max_length=150)
+    cuenta_inventario_origen = models.CharField(max_length=100)
+    validada = models.BooleanField(default=False)
+    justificacion_validacion = models.TextField(blank=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["proyecto", "codigo_producto"]
+        constraints = [
+            models.UniqueConstraint(fields=["proyecto", "codigo_producto"], name="uq_producto_cuenta_proyecto_codigo"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.codigo_producto = normalize_code(self.codigo_producto)
+        self.cuenta_destino = normalize_code(self.cuenta_destino)
+        self.categoria_contable = normalize_category(self.categoria_contable)
+        self.cuenta_inventario_origen = normalize_code(self.cuenta_inventario_origen)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.proyecto.codigo} / {self.codigo_producto} → {self.cuenta_destino}"
 
 
 class MapeoRubroCuenta(TimeStampedModel):

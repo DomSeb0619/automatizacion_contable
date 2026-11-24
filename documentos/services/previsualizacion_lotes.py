@@ -10,6 +10,10 @@ from documentos.models import DocumentoLote, LineaReclasificacion, LoteCarga
 
 
 ZERO = Decimal("0.00")
+PRODUCT_OBSERVATION_CODES = {
+    "PRODUCTO_SIN_CORRESPONDENCIA", "EQUIVALENCIA_PENDIENTE_VALIDACION",
+    "CATEGORIA_CUENTA_NO_AUTORIZADA", "CUENTA_ORIGEN_NO_ENCONTRADA",
+}
 
 
 class LoteNoEncontrado(LookupError):
@@ -36,21 +40,35 @@ def get_batch_preview(lote_id: int) -> dict:
 
     documents = [serialize_document(document) for document in lote.documentos.all()]
     duplicate_only = bool(documents) and all(document["estado"] == DocumentoLote.Estado.DUPLICADO for document in documents)
+    only_observations = bool(documents) and all(
+        document["estado"] in {DocumentoLote.Estado.VALIDO, DocumentoLote.Estado.ADVERTENCIA, DocumentoLote.Estado.EXPORTADO}
+        or document["puede_descargar_preliminar"]
+        for document in documents
+    )
     return {
         "id": lote.id,
         "empresa": lote.proyecto.empresa.nombre,
         "proyecto": {"codigo": lote.proyecto.codigo, "nombre": lote.proyecto.nombre},
         "fecha_creacion": lote.creado_en.isoformat(),
         "estado": "SIN DOCUMENTOS NUEVOS" if duplicate_only else lote.estado,
+        "solo_observaciones": only_observations,
         "cantidad_archivos": lote.cantidad_archivos,
         "cantidad_validos": sum(document["estado"] == DocumentoLote.Estado.VALIDO for document in documents),
         "cantidad_exportables": sum(document["puede_exportar"] for document in documents),
         "cantidad_advertencias": sum(document["estado"] == DocumentoLote.Estado.ADVERTENCIA for document in documents),
         "cantidad_con_errores": sum(document["estado"] == DocumentoLote.Estado.ERROR for document in documents),
         "cantidad_duplicados": sum(document["estado"] == DocumentoLote.Estado.DUPLICADO for document in documents),
+        "productos_procesados": sum(document["productos_procesados"] for document in documents),
+        "productos_pendientes": sum(document["productos_pendientes"] for document in documents),
+        "cantidad_preliminares": sum(document["puede_descargar_preliminar"] for document in documents),
+        "opciones_categoria_cuenta": list(
+            lote.proyecto.mapeos_categoria.filter(activo=True).values("categoria", "cuenta_general_original").order_by("categoria", "cuenta_general_original")
+        ),
         "total_debito": money_string(lote.total_debito),
         "total_credito": money_string(lote.total_credito),
         "diferencia": money_string(lote.diferencia),
+        "total_reclasificado": money_string(sum((Decimal(document["total_debito"]) for document in documents), ZERO)),
+        "total_pendiente": money_string(sum((Decimal(document["valor_pendiente"]) for document in documents), ZERO)),
         "puede_exportar": any(document["puede_exportar"] or document["puede_redescargar"] for document in documents),
         "documentos": documents,
     }
@@ -60,12 +78,18 @@ def serialize_document(document: DocumentoLote) -> dict:
     lines = [serialize_line(line) for line in document.lineas.all()]
     errors = [item for item in document.mensajes if item.get("level") == "error"]
     warnings = [item for item in document.mensajes if item.get("level") == "warning"]
+    revisions = [item.get("revision") | {"code": item.get("code"), "message": item.get("message")} for item in errors if item.get("revision")]
+    error_codes = {item.get("code") for item in errors}
     can_export = (
         document.estado in {DocumentoLote.Estado.VALIDO, DocumentoLote.Estado.ADVERTENCIA}
         and bool(lines)
         and document.diferencia == ZERO
     )
     can_redownload = document.estado == DocumentoLote.Estado.EXPORTADO and bool(lines) and document.diferencia == ZERO
+    preliminary = (
+        document.estado == DocumentoLote.Estado.ERROR and bool(lines) and document.diferencia == ZERO
+        and bool(error_codes) and error_codes.issubset(PRODUCT_OBSERVATION_CODES)
+    )
     return {
         "id": document.id,
         "nombre_original": document.nombre_archivo_original,
@@ -83,6 +107,11 @@ def serialize_document(document: DocumentoLote) -> dict:
         "diferencia": money_string(document.diferencia),
         "errores": errors,
         "advertencias": warnings,
+        "revisiones_producto": revisions,
+        "productos_procesados": sum(line["tipo"] == "1" for line in lines),
+        "productos_pendientes": len(revisions),
+        "valor_pendiente": money_string(sum((Decimal(item.get("importe", "0.00")) for item in revisions), ZERO)),
+        "puede_descargar_preliminar": preliminary,
         "puede_exportar": can_export,
         "puede_redescargar": can_redownload,
         "lineas": lines,

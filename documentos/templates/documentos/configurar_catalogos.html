@@ -94,7 +94,11 @@
 
 
         <div class="catalog-upload-actions">
-
+            {% if project and project.modalidad_reclasificacion == 'PRODUCTOS' %}
+            <button class="primary" name="tipo" value="equivalencias" type="submit">
+                Actualizar equivalencias de productos
+            </button>
+            {% else %}
             <button
                 class="primary"
                 name="tipo"
@@ -112,10 +116,27 @@
             >
                 Actualizar rubros y cuentas
             </button>
+            {% endif %}
 
         </div>
 
     </form>
+
+    {% if project and project.modalidad_reclasificacion == 'PRODUCTOS' %}
+    <hr>
+    <form method="post" enctype="multipart/form-data" class="catalog-form catalog-upload-form">
+        {% csrf_token %}<input type="hidden" name="accion" value="previsualizar_rhr">
+        {{ rhr_form.non_field_errors }}{{ rhr_form.proyecto.as_hidden }}
+        <p><strong>Completar equivalencias desde diario manual RHR</strong></p>
+        <p class="muted">Solo propone cambios. La confirmación posterior actualiza exclusivamente equivalencias demostradas.</p>
+        <div class="catalog-upload-fields">
+            <label>Factura PAC {{ rhr_form.factura }}{{ rhr_form.factura.errors }}</label>
+            <label>Diario manual RHR {{ rhr_form.diario_manual }}{{ rhr_form.diario_manual.errors }}</label>
+            <label>Catálogo de equivalencias {{ rhr_form.catalogo }}{{ rhr_form.catalogo.errors }}</label>
+        </div>
+        <button class="secondary" type="submit">Previsualizar validación RHR</button>
+    </form>
+    {% endif %}
 
 </section>
 
@@ -170,6 +191,19 @@
             <b>{{ preview.rechazados }}</b>
         </div>
 
+        {% if preview.tipo == 'equivalencias' %}
+        <div><span>Duplicados</span><b>{{ preview.duplicados }}</b></div>
+        <div><span>Pendientes de validación</span><b>{{ preview.pendientes }}</b></div>
+        {% endif %}
+        {% if preview.tipo == 'validacion_rhr' %}
+        <div><span>Por validar</span><b>{{ preview.detalles.productos_validados }}</b></div>
+        <div><span>Categorías</span><b>{{ preview.detalles.categorias_identificadas }}</b></div>
+        <div><span>Cuenta inventario</span><b>{{ preview.detalles.cuenta_inventario }}</b></div>
+        <div><span>Conflictos</span><b>{{ preview.detalles.conflictos }}</b></div>
+        <div><span>Sin evidencia</span><b>{{ preview.detalles.sin_evidencia }}</b></div>
+        <div><span>Pendientes</span><b>{{ preview.pendientes }}</b></div>
+        {% endif %}
+
     </div>
 
 
@@ -192,7 +226,9 @@
                     <th>Fila</th>
                     <th>Código</th>
                     <th>Acción</th>
-                    <th>Detalle</th>
+                    <th>Descripción</th>
+                    {% if preview.tipo == 'equivalencias' %}<th>Destino</th><th>Descripción destino</th>{% endif %}
+                    {% if preview.tipo == 'validacion_rhr' %}<th>Destino catálogo</th><th>Destino diario</th><th>Categoría</th><th>Origen</th><th>Justificación</th>{% endif %}
                     <th>Valor problemático</th>
                 </tr>
             </thead>
@@ -217,6 +253,16 @@
                                 {{ row.porcentaje_iva|default:'' }}
                             {% endif %}
                         </td>
+
+                        {% if preview.tipo == 'equivalencias' %}
+                        <td>{% firstof row.cuenta_destino row.destino_actual "" %}</td>
+                        <td>{{ row.descripcion_destino|default:'' }}</td>
+                        {% endif %}
+                        {% if preview.tipo == 'validacion_rhr' %}
+                        <td>{{ row.cuenta_destino|default:'' }}</td><td>{{ row.destino_manual|default:'' }}</td>
+                        <td>{{ row.categoria_contable|default:'' }}</td><td>{{ row.cuenta_inventario_origen|default:'' }}</td>
+                        <td>{{ row.justificacion|default:'' }}</td>
+                        {% endif %}
 
                         <td>
                             {{ row.valor_problematico|default:'' }}
@@ -321,10 +367,14 @@
                 <span>Productos activos</span>
             </div>
 
+            {% if project.modalidad_reclasificacion == 'PRODUCTOS' %}
+            <div><strong>{{ product_accounts|length }}</strong><span>Equivalencias mostradas</span></div>
+            {% else %}
             <div>
                 <strong>{{ resumen_configuracion.rubros_finales_activos }}</strong>
                 <span>Rubros finales tipo V</span>
             </div>
+            {% endif %}
 
             <div>
                 <strong>{{ resumen_configuracion.categorias_configuradas }}</strong>
@@ -773,6 +823,30 @@
 
 
         <div class="manual-grid catalog-manual-grid">
+
+            {% if project.modalidad_reclasificacion == 'PRODUCTOS' %}
+            <details class="catalog-manual-detail" open>
+                <summary>Equivalencia de producto validada</summary>
+                <form method="post" class="catalog-form">
+                    {% csrf_token %}<input type="hidden" name="accion" value="guardar_producto_cuenta">
+                    {{ producto_cuenta_form.proyecto.as_hidden }}{{ producto_cuenta_form.registro_id }}
+                    {{ producto_cuenta_form.non_field_errors }}
+                    <label>Código PAC {{ producto_cuenta_form.codigo_producto }}</label>
+                    <label>Descripción PAC {{ producto_cuenta_form.descripcion_producto }}</label>
+                    <label>Cuenta destino {{ producto_cuenta_form.cuenta_destino }}</label>
+                    <label>Descripción destino {{ producto_cuenta_form.descripcion_destino }}</label>
+                    <label>Categoría contable {{ producto_cuenta_form.categoria_contable }}</label>
+                    <label>Cuenta inventario origen {{ producto_cuenta_form.cuenta_inventario_origen }}</label>
+                    <label class="checkbox">{{ producto_cuenta_form.validada }} Validada por contabilidad</label>
+                    <label>Justificación {{ producto_cuenta_form.justificacion_validacion }}</label>
+                    <label class="checkbox">{{ producto_cuenta_form.activo }} Activa</label>
+                    <button class="primary" type="submit">Guardar equivalencia</button>
+                </form>
+                <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Destino</th><th>Categoría</th><th>Origen</th><th>Validada</th></tr></thead><tbody>
+                {% for mapping in product_accounts %}<tr><td>{{ mapping.codigo_producto }}</td><td>{{ mapping.cuenta_destino }}</td><td>{{ mapping.categoria_contable }}</td><td>{{ mapping.cuenta_inventario_origen }}</td><td>{{ mapping.validada|yesno:'Sí,No' }}</td></tr>{% empty %}<tr><td colspan="5">No hay equivalencias por producto.</td></tr>{% endfor %}
+                </tbody></table></div>
+            </details>
+            {% endif %}
 
 
             <!-- PRODUCTO -->

@@ -7,9 +7,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from openpyxl import Workbook
+import xlwt
 
-from documentos.models import Empresa, MapeoProductoIVA, MapeoRubroCuenta, Proyecto, normalize_identifier
+from documentos.models import Empresa, MapeoProductoCuenta, MapeoProductoIVA, MapeoRubroCuenta, Proyecto, normalize_identifier
 from documentos.services.configuracion_catalogos import CatalogoInvalido, ConfirmacionInvalida, aplicar_previsualizacion, previsualizar_catalogo
+from documentos.forms import CargaLoteForm
 
 
 class ConfiguracionCatalogosTests(TestCase):
@@ -37,6 +39,12 @@ class ConfiguracionCatalogosTests(TestCase):
 
     def rubro_workbook(self, rows) -> Path:
         return self.workbook('rubros.xlsx', ['CODIGO DE PROYECTO', 'CODIGO DEL RUBRO PADRE', 'CODIGO DE RUBRO', 'DESCRIPCION DEL RUBRO', 'TIPO', 'CUENTAS'], rows, 'Hoja2')
+
+    def equivalence_workbook(self, rows) -> Path:
+        return self.workbook('equivalencias.xlsx', ['CODIGO', 'DESC.', 'CODIGO', 'NOMBRE'], rows)
+
+    def product_project(self) -> Proyecto:
+        return Proyecto.objects.create(empresa=self.empresa, codigo='PAC', nombre='PAC', modalidad_reclasificacion='PRODUCTOS')
 
     def test_preview_and_confirmation_create_update_and_skip_without_duplicates(self) -> None:
         MapeoProductoIVA.objects.create(proyecto=self.proyecto, codigo_producto='P-1', descripcion='Anterior', porcentaje_iva=Decimal('12'))
@@ -197,3 +205,82 @@ class ConfiguracionCatalogosTests(TestCase):
         self.assertEqual(accepted.status_code, 302)
         self.assertTrue(MapeoProductoIVA.objects.filter(proyecto=self.proyecto, codigo_producto='WEB-OK').exists())
         self.assertFalse(MapeoProductoIVA.objects.filter(proyecto=self.proyecto, codigo_producto='WEB-BAD').exists())
+
+    def test_product_equivalences_preview_677_rows_without_writing(self) -> None:
+        project = self.product_project()
+        rows = [(f'PAC-{number:03d}', f'Producto {number}', f'DEST-{number:03d}', f'Destino {number}') for number in range(1, 678)]
+        preview = previsualizar_catalogo(project, 'equivalencias', self.equivalence_workbook(rows))
+        self.assertEqual((preview.creados, preview.actualizados, preview.omitidos, preview.rechazados, preview.duplicados, preview.pendientes), (677, 0, 0, 0, 0, 677))
+        self.assertEqual(MapeoProductoCuenta.objects.filter(proyecto=project).count(), 0)
+        aplicar_previsualizacion(preview.as_session())
+        self.assertEqual(MapeoProductoCuenta.objects.filter(proyecto=project).count(), 677)
+        self.assertEqual(MapeoProductoCuenta.objects.filter(proyecto=project, validada=True).count(), 0)
+
+    def test_equivalence_reimport_is_idempotent_and_isolated(self) -> None:
+        project = self.product_project()
+        other = Proyecto.objects.create(empresa=self.otra_empresa, codigo='PAC', nombre='PAC', modalidad_reclasificacion='PRODUCTOS')
+        path = self.equivalence_workbook([('C20135', 'Producto', 'CCU2', 'Destino')])
+        aplicar_previsualizacion(previsualizar_catalogo(project, 'equivalencias', path).as_session())
+        second = previsualizar_catalogo(project, 'equivalencias', path)
+        self.assertEqual((second.creados, second.actualizados, second.omitidos), (0, 0, 1))
+        self.assertEqual(second.pendientes, 1)
+        self.assertFalse(MapeoProductoCuenta.objects.filter(proyecto=other).exists())
+
+    def test_validated_equivalence_with_changed_destination_requires_review(self) -> None:
+        project = self.product_project()
+        mapping = MapeoProductoCuenta.objects.create(
+            proyecto=project, codigo_producto='C20135', descripcion_producto='Anterior', cuenta_destino='CCU1',
+            descripcion_destino='Anterior', categoria_contable='10103', cuenta_inventario_origen='1010312', validada=True,
+            justificacion_validacion='Revisión contable',
+        )
+        preview = previsualizar_catalogo(project, 'equivalencias', self.equivalence_workbook([('C20135', 'Nuevo', 'CCU2', 'Nuevo destino')]))
+        self.assertEqual(preview.filas[0]['estado'], 'REVISAR')
+        aplicar_previsualizacion(preview.as_session())
+        mapping.refresh_from_db()
+        self.assertEqual(mapping.cuenta_destino, 'CCU1')
+        self.assertTrue(mapping.validada)
+        self.assertEqual(mapping.justificacion_validacion, 'Revisión contable')
+
+    def test_equivalence_file_duplicates_and_missing_values_are_not_saved(self) -> None:
+        project = self.product_project()
+        preview = previsualizar_catalogo(project, 'equivalencias', self.equivalence_workbook([
+            ('UNO', 'Uno', 'D1', 'Destino'), ('UNO', 'Duplicado', 'D2', 'Destino'), ('', 'Sin código', 'D3', 'Destino'),
+        ]))
+        self.assertEqual((preview.creados, preview.duplicados, preview.rechazados), (1, 1, 1))
+        aplicar_previsualizacion(preview.as_session(), acepta_rechazados=True)
+        self.assertEqual(list(MapeoProductoCuenta.objects.filter(proyecto=project).values_list('codigo_producto', flat=True)), ['UNO'])
+
+    def test_equivalence_preview_renders_omitted_row_without_optional_destination_fields(self) -> None:
+        project = self.product_project()
+        source = self.equivalence_workbook([('SIN-DESTINO', 'Fila sin equivalencia', '', '')])
+        with override_settings(UPLOAD_TEMP_DIR=Path(self.temp_directory.name) / 'uploads'):
+            response = self.client.post(reverse('documentos:configurar_catalogos'), {
+                'accion': 'previsualizar', 'proyecto': project.id, 'tipo': 'equivalencias',
+                'archivo': SimpleUploadedFile('equivalencias.xlsx', source.read_bytes()),
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'SIN-DESTINO')
+        self.assertContains(response, 'Sin código de destino')
+        self.assertFalse(MapeoProductoCuenta.objects.filter(proyecto=project).exists())
+
+    def test_product_project_accepts_xlsx_and_xls_while_rubros_keeps_xls(self) -> None:
+        project = self.product_project()
+        source = self.equivalence_workbook([('PAC-1', 'Producto', 'DEST-1', 'Destino')]).read_bytes()
+        product_form = CargaLoteForm({'proyecto': project.id}, {'archivos': SimpleUploadedFile('consulta.xlsx', source)})
+        xls = xlwt.Workbook()
+        xls.add_sheet('PAC').write(0, 0, 'Consulta PAC')
+        xls_path = Path(self.temp_directory.name) / 'consulta.xls'
+        xls.save(str(xls_path))
+        product_xls_form = CargaLoteForm({'proyecto': project.id}, {'archivos': SimpleUploadedFile('consulta.xls', xls_path.read_bytes())})
+        standard_form = CargaLoteForm({'proyecto': self.proyecto.id}, {'archivos': SimpleUploadedFile('consulta.xlsx', source)})
+        self.assertTrue(product_form.is_valid())
+        self.assertTrue(product_xls_form.is_valid())
+        self.assertFalse(standard_form.is_valid())
+        self.assertIn('solo se permiten archivos .xls', str(standard_form.errors))
+
+    def test_real_verdepamba_catalog_has_677_previewed_equivalences_when_available(self) -> None:
+        source = Path.home() / 'Downloads' / 'PARA RECLASIFICACION VERDEPAMBA.xlsx'
+        if not source.exists():
+            self.skipTest('Catálogo local VERDEPAMBA no disponible.')
+        preview = previsualizar_catalogo(self.product_project(), 'equivalencias', source)
+        self.assertEqual((preview.creados, preview.omitidos, preview.rechazados, preview.duplicados, preview.pendientes), (677, 158, 0, 0, 677))

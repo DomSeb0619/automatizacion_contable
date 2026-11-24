@@ -50,6 +50,7 @@ class JournalEntry:
     amount: Decimal
     debit_credit: str
     rubro: str | None = None
+    category: str | None = None
     cent_adjustment: Decimal = ZERO
 
 

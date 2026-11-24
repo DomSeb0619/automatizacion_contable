@@ -18,9 +18,9 @@
     <label class="field-label" for="{{ form.proyecto.id_for_label }}">Empresa y proyecto</label><p class="muted">Si el proyecto está incompleto, se mostrará una advertencia antes de validar el lote.</p>
     {{ form.proyecto }}
     {% if form.proyecto.errors %}<div class="field-error">{{ form.proyecto.errors|striptags }}</div>{% endif %}
-    <input id="{{ form.archivos.id_for_label }}" name="{{ form.archivos.html_name }}" type="file" accept=".xls" multiple required class="file-input">
+    <input id="{{ form.archivos.id_for_label }}" name="{{ form.archivos.html_name }}" type="file" accept=".xls,.xlsx" multiple required class="file-input">
     <div class="dropzone" id="dropzone" tabindex="0">
-      <strong>Arrastra aquí tus archivos .xls</strong>
+      <strong id="upload-format-label">Arrastra aquí tus archivos .xls</strong>
       <span>o usa el botón para seleccionarlos</span>
       <button type="button" class="secondary" id="select-files">Seleccionar archivos</button>
       <small>Máximo 50 archivos, hasta 5 MB cada uno. Se procesan temporalmente y no se conservan.</small>
@@ -31,4 +31,4 @@
   </form>
 </section>
 {% endblock %}
-{% block scripts %}<script src="{% static 'documentos/upload.js' %}"></script>{% endblock %}
+{% block scripts %}{{ project_modes|json_script:"project-modes" }}<script src="{% static 'documentos/upload.js' %}"></script>{% endblock %}

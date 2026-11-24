@@ -4,8 +4,18 @@
   const list = document.querySelector('#file-list');
   const choose = document.querySelector('#select-files');
   const form = document.querySelector('#upload-form');
+  const project = document.querySelector('#id_proyecto');
+  const formatLabel = document.querySelector('#upload-format-label');
   if (!input || !zone || !list || !choose || !form) return;
   let files = [];
+  const modes = JSON.parse(document.querySelector('#project-modes')?.textContent || '{}');
+  const updateFormat = () => {
+    const pac = modes[project?.value] === 'PRODUCTOS';
+    input.accept = pac ? '.xls,.xlsx' : '.xls';
+    if (formatLabel) formatLabel.textContent = `Arrastra aquí tus archivos ${pac ? '.xls o .xlsx' : '.xls'}`;
+    files = []; sync();
+  };
+  project?.addEventListener('change', updateFormat);
   const formatSize = (size) => `${(size / 1024 / 1024).toFixed(size > 1024 * 1024 ? 1 : 2)} MB`;
   const sync = () => {
     const transfer = new DataTransfer(); files.forEach(file => transfer.items.add(file)); input.files = transfer.files;
